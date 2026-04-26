@@ -1048,6 +1048,22 @@ meter {
   color: var(--ink-2);
   font-size: 14px;
   line-height: 1.55;
+  white-space: pre-line;
+}
+
+.section-lines {
+  display: grid;
+  gap: 8px;
+}
+
+.section-lines span {
+  display: block;
+  border-left: 2px solid var(--amber);
+  background: rgba(216, 139, 53, 0.08);
+  color: var(--ink-2);
+  padding: 9px 11px;
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .section-proof {

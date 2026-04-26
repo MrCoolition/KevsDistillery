@@ -15,14 +15,21 @@ module.exports = async function handler(request, response) {
     const status = ready ? await databaseStatus() : null;
     sendJson(response, ready ? 200 : 400, {
       ok: ready,
-      databaseReady: ready,
-      database: status,
-      error: ready ? null : 'DATABASE_URL, POSTGRES_URL, or NEON_DATABASE_URL is not configured.'
+      workspaceReady: ready,
+      workspace: status ? {
+        configured: Boolean(status.configured),
+        ready: Boolean(status.ready),
+        tableCount: status.tableCount,
+        requiredTableCount: status.requiredTableCount,
+        missingTables: status.missingTables,
+        error: status.error || null
+      } : null,
+      error: ready ? null : 'Workspace storage is not configured.'
     });
   } catch (error) {
     sendJson(response, 500, {
       ok: false,
-      error: error instanceof Error ? error.message : 'Migration failed.'
+      error: 'Workspace verification failed.'
     });
   }
 };

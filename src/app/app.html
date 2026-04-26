@@ -44,7 +44,7 @@
       <img class="hero-logo" src="/assets/uncle-kevs-distillery.png" alt="Uncle Kev's Distillery">
       <p class="eyebrow">Small batch lineage. Barrel strength evidence.</p>
       <h1>Data discovery, distilled.</h1>
-      <p class="hero-text">Browse files or folders, run OpenAI analysis, and generate a discovery action pack engineers can actually use.</p>
+      <p class="hero-text">Browse files or folders, run The Distillery, and generate a discovery action pack engineers can actually use.</p>
       <div class="hero-meta" aria-label="Executive summary">
         <span>{{ model.businessFunction }}</span>
         <span>{{ model.criticalOutputs.length }} critical outputs</span>
@@ -52,7 +52,7 @@
       </div>
     </div>
 
-    <aside class="ai-panel" aria-label="OpenAI orchestration">
+    <aside class="ai-panel" aria-label="Distillery orchestration">
       <div>
         <span class="tiny-label">Copper still</span>
         <strong>{{ ai.model }}</strong>
@@ -198,8 +198,8 @@
                 <h2>Turn raw sources into migration proof</h2>
               </div>
               <div class="status-cluster">
-                <span [class.ready]="apiHealth()?.openAIConfigured">OpenAI</span>
-                <span [class.ready]="apiHealth()?.database?.ready">Neon</span>
+                <span [class.ready]="distilleryReady(apiHealth())">Distillery</span>
+                <span [class.ready]="workspaceReady(apiHealth())">Workspace</span>
               </div>
             </div>
 
@@ -334,8 +334,8 @@
                   <p>{{ runStatus() }}</p>
                   @if (apiHealth(); as health) {
                     <small>
-                      OpenAI {{ health.openAIConfigured ? 'ready' : 'missing' }}.
-                      Neon {{ databaseStatusText(health) }}.
+                      Distillery {{ distilleryReady(health) ? 'ready' : 'not ready' }}.
+                      Workspace {{ workspaceStatusText(health) }}.
                     </small>
                   }
                 </section>
@@ -362,20 +362,20 @@
                   @if (apiHealth(); as health) {
                     <dl class="status-list">
                       <div>
-                        <dt>Model</dt>
-                        <dd>{{ health.model }}</dd>
+                        <dt>Engine</dt>
+                        <dd>The Distillery</dd>
                       </div>
                       <div>
-                        <dt>OpenAI</dt>
-                        <dd>{{ health.openAIConfigured ? 'configured' : 'missing' }}</dd>
+                        <dt>Distillery</dt>
+                        <dd>{{ distilleryReady(health) ? 'ready' : 'not ready' }}</dd>
                       </div>
                       <div>
-                        <dt>Neon</dt>
-                        <dd>{{ databaseStatusText(health) }}</dd>
+                        <dt>Workspace</dt>
+                        <dd>{{ workspaceStatusText(health) }}</dd>
                       </div>
                     </dl>
-                    <button type="button" class="schema-button" (click)="applyNeonSchema()">
-                      Verify Neon Schema
+                    <button type="button" class="schema-button" (click)="verifyWorkspace()">
+                      Verify Workspace
                     </button>
                   } @else {
                     <p>{{ apiError() || 'Checking API health...' }}</p>
@@ -559,7 +559,7 @@
                 <p class="section-kicker">Generated analysis</p>
                   <h2>Discovery Action Pack</h2>
                 <p>
-                  OpenAI generates the concise report layer from the same canonical model that drives lineage,
+                  The Distillery generates the concise report layer from the same canonical model that drives lineage,
                   controls, business exposure, artifacts, and the engineering backlog.
                 </p>
               </div>
@@ -626,7 +626,15 @@
                 @for (section of reportSections(); track section.title) {
                   <section>
                     <h3>{{ section.title }}</h3>
-                    <p>{{ section.body }}</p>
+                    @if (sectionBodyLines(section.body).length > 1) {
+                      <div class="section-lines">
+                        @for (line of sectionBodyLines(section.body); track $index) {
+                          <span>{{ line }}</span>
+                        }
+                      </div>
+                    } @else {
+                      <p>{{ section.body }}</p>
+                    }
                     @if (section.confidence !== null || section.evidenceIds.length) {
                       <footer class="section-proof">
                         @if (section.confidence !== null) {
@@ -703,13 +711,13 @@
         <div class="confirm-brand">
           <img src="/assets/uncle-kevs-distillery.png" alt="">
           <span>
-            <em>OpenAI still run</em>
+            <em>Distillery run</em>
             <strong id="analysis-confirm-title">Send this evidence to the still?</strong>
           </span>
         </div>
         <p>
-          Uncle Kev's Distillery will send the extracted evidence payload to your configured backend and OpenAI model,
-          then persist the completed canonical discovery model to Neon.
+          Uncle Kev's Distillery will send the extracted evidence payload into The Distillery,
+          then save the completed canonical discovery model to the workspace.
         </p>
         <dl>
           <div>
@@ -721,8 +729,8 @@
             <dd>{{ sourceStats().evidenceChars }}</dd>
           </div>
           <div>
-            <dt>Model</dt>
-            <dd>{{ apiHealth()?.model || ai.model }}</dd>
+            <dt>Engine</dt>
+            <dd>The Distillery</dd>
           </div>
         </dl>
         <div class="confirm-actions">

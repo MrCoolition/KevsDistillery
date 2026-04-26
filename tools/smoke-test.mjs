@@ -57,8 +57,8 @@ if (angularVersion !== '21.2.8') {
   process.exit(1);
 }
 
-if (!source.includes("OPENAI_DISCOVERY_MODEL = 'gpt-5.5'")) {
-  console.error('Expected OpenAI discovery model to be gpt-5.5');
+if (!source.includes("DISTILLERY_ENGINE_LABEL = 'The Distillery'")) {
+  console.error('Expected public distillery engine label to be The Distillery');
   process.exit(1);
 }
 

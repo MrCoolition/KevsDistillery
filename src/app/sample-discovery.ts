@@ -1,4 +1,4 @@
-import { DISCOVERY_AGENT_CONTRACT, OPENAI_DISCOVERY_MODEL } from './ai-orchestration';
+import { DISCOVERY_AGENT_CONTRACT, DISTILLERY_ENGINE_LABEL } from './ai-orchestration';
 import { DiscoveryModel } from './discovery-model';
 
 export const discoveryModel: DiscoveryModel = {
@@ -79,13 +79,13 @@ export const discoveryModel: DiscoveryModel = {
       },
       recommendedAction: {
         mode: 'automate',
-        summary: 'Persist every still run, graph node, relationship, artifact, and backlog item to Neon for review and reuse.',
+        summary: 'Save every still run, graph node, relationship, artifact, and backlog item to the workspace for review and reuse.',
         owner: 'Platform engineering',
         priority: 'P0',
         acceptanceCriteria: 'Runs can be retrieved with items, edges, artifacts, and actions intact.'
       },
       status: 'partial',
-      tags: ['canonical-model', 'lineage', 'neon']
+      tags: ['canonical-model', 'lineage', 'workspace']
     },
     {
       id: 'PACK-001',
@@ -196,7 +196,7 @@ export const discoveryModel: DiscoveryModel = {
 };
 
 export const aiReadiness = {
-  model: OPENAI_DISCOVERY_MODEL,
+  model: DISTILLERY_ENGINE_LABEL,
   contract: DISCOVERY_AGENT_CONTRACT,
-  serverBoundary: 'All LLM calls run through Uncle Kev\'s backend still. The browser receives normalized proof-graph deltas only.'
+  serverBoundary: 'The Distillery converts source evidence into normalized proof-graph deltas. The browser receives the distilled model only.'
 };

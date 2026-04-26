@@ -71,7 +71,7 @@ function parseJsonOutput(outputText) {
 async function synthesizeWithOpenAI(payload) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    const error = new Error('OPENAI_API_KEY is not configured.');
+    const error = new Error('The Distillery engine is not configured.');
     error.statusCode = 500;
     throw error;
   }
@@ -127,7 +127,7 @@ async function synthesizeWithOpenAI(payload) {
     });
   } catch (error) {
     if (error?.name === 'AbortError') {
-      const timeoutError = new Error('OpenAI synthesis timed out before Vercel could finish the request.');
+      const timeoutError = new Error('The Distillery timed out before the request could finish.');
       timeoutError.statusCode = 504;
       throw timeoutError;
     }
@@ -141,13 +141,13 @@ async function synthesizeWithOpenAI(payload) {
   try {
     result = responseText ? JSON.parse(responseText) : {};
   } catch {
-    const error = new Error('OpenAI returned a non-JSON response.');
+    const error = new Error('The Distillery returned a non-JSON response.');
     error.statusCode = 502;
     error.detail = responseText.slice(0, 1000);
     throw error;
   }
   if (!response.ok) {
-    const error = new Error('OpenAI request failed.');
+    const error = new Error('The Distillery request failed.');
     error.statusCode = response.status;
     error.detail = result;
     throw error;
@@ -156,7 +156,7 @@ async function synthesizeWithOpenAI(payload) {
   const outputText = extractOutputText(result);
   const canonicalDelta = parseJsonOutput(outputText);
   if (!canonicalDelta || typeof canonicalDelta !== 'object') {
-    const error = new Error('OpenAI did not return a canonical discovery JSON object.');
+    const error = new Error('The Distillery did not return a canonical discovery JSON object.');
     error.statusCode = 502;
     error.detail = outputText.slice(0, 1000);
     throw error;
@@ -214,7 +214,7 @@ function buildRequestBody(payload, background = false) {
 async function openAIJson(path, options = {}) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    const error = new Error('OPENAI_API_KEY is not configured.');
+    const error = new Error('The Distillery engine is not configured.');
     error.statusCode = 500;
     throw error;
   }
@@ -235,7 +235,7 @@ async function openAIJson(path, options = {}) {
     });
   } catch (error) {
     if (error?.name === 'AbortError') {
-      const timeoutError = new Error('OpenAI did not acknowledge the background analysis before the request window closed.');
+      const timeoutError = new Error('The Distillery did not acknowledge the background run before the request window closed.');
       timeoutError.statusCode = 504;
       throw timeoutError;
     }
@@ -249,14 +249,14 @@ async function openAIJson(path, options = {}) {
   try {
     result = responseText ? JSON.parse(responseText) : {};
   } catch {
-    const error = new Error('OpenAI returned a non-JSON response.');
+    const error = new Error('The Distillery returned a non-JSON response.');
     error.statusCode = 502;
     error.detail = responseText.slice(0, 1000);
     throw error;
   }
 
   if (!response.ok) {
-    const error = new Error('OpenAI request failed.');
+    const error = new Error('The Distillery request failed.');
     error.statusCode = response.status;
     error.detail = result;
     throw error;
@@ -276,7 +276,7 @@ function responseToSynthesis(result) {
   }
 
   if (result.status && result.status !== 'completed') {
-    const error = new Error(result.error?.message || `OpenAI response ended with status ${result.status}.`);
+    const error = new Error(result.error?.message || `The Distillery run ended with status ${result.status}.`);
     error.statusCode = 502;
     error.detail = result.error || result.incomplete_details || result;
     throw error;
@@ -285,7 +285,7 @@ function responseToSynthesis(result) {
   const outputText = extractOutputText(result);
   const canonicalDelta = parseJsonOutput(outputText);
   if (!canonicalDelta || typeof canonicalDelta !== 'object') {
-    const error = new Error('OpenAI did not return a canonical discovery JSON object.');
+    const error = new Error('The Distillery did not return a canonical discovery JSON object.');
     error.statusCode = 502;
     error.detail = outputText.slice(0, 1000);
     throw error;

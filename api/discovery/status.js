@@ -30,8 +30,8 @@ module.exports = async function handler(request, response) {
         queued: true,
         responseId: synthesis.responseId,
         responseStatus: synthesis.responseStatus,
-        model: synthesis.model,
-        message: `OpenAI analysis is ${synthesis.responseStatus}.`
+        engine: 'The Distillery',
+        message: `The Distillery run is ${synthesis.responseStatus}.`
       });
       return;
     }
@@ -43,8 +43,8 @@ module.exports = async function handler(request, response) {
         needsPayload: true,
         responseId: synthesis.responseId,
         responseStatus: synthesis.responseStatus,
-        model: synthesis.model,
-        message: 'OpenAI analysis is complete. Send the source payload once to persist the run.',
+        engine: 'The Distillery',
+        message: 'The Distillery run is complete. Send the source payload once to save the run.',
         outputText: synthesis.outputText,
         canonicalDelta: synthesis.canonicalDelta
       });
@@ -61,7 +61,7 @@ module.exports = async function handler(request, response) {
       stored: persistence.stored,
       persistenceError: persistence.persistenceError || null,
       counts: persistence.counts || null,
-      model: synthesis.model,
+      engine: 'The Distillery',
       fallbackReason: synthesis.fallbackReason || null,
       outputText: synthesis.outputText,
       canonicalDelta: synthesis.canonicalDelta
@@ -69,8 +69,7 @@ module.exports = async function handler(request, response) {
   } catch (error) {
     sendJson(response, error.statusCode || 500, {
       ok: false,
-      error: error instanceof Error ? error.message : 'Could not check OpenAI synthesis status.',
-      detail: error.detail || null
+      error: error?.statusCode && error instanceof Error ? error.message : 'Could not check Distillery run status.'
     });
   }
 };

@@ -631,7 +631,7 @@ async function saveDiscoveryRun(requestPayload, synthesis) {
       runId,
       stored: false,
       counts,
-      persistenceError: error instanceof Error ? error.message : 'Database persistence is unavailable.'
+      persistenceError: 'Workspace storage is unavailable.'
     };
   }
 
@@ -640,7 +640,7 @@ async function saveDiscoveryRun(requestPayload, synthesis) {
       runId,
       stored: false,
       counts,
-      persistenceError: 'DATABASE_URL, POSTGRES_URL, or NEON_DATABASE_URL is not configured.'
+      persistenceError: 'Workspace storage is not configured.'
     };
   }
 

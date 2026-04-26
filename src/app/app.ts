@@ -19,13 +19,13 @@ interface ImportSource {
 
 interface ApiHealth {
   ok: boolean;
-  model: string;
-  openAIConfigured: boolean;
-  database: {
+  distillery?: {
+    ready: boolean;
+    label?: string;
+  };
+  workspace?: {
     configured: boolean;
     ready: boolean;
-    schema?: string;
-    driver?: string;
     tableCount?: number;
     requiredTableCount?: number;
     missingTables?: string[];
@@ -49,6 +49,7 @@ interface SynthesisResponse {
     artifacts: number;
     backlog: number;
   } | null;
+  engine?: string;
   model?: string;
   fallbackReason?: string | null;
   outputText?: string;
@@ -57,8 +58,8 @@ interface SynthesisResponse {
     businessFunction?: string;
     recommendation?: string;
     decisionRequired?: string;
-    systemsInScope?: string[];
-    criticalOutputs?: string[];
+    systemsInScope?: unknown[];
+    criticalOutputs?: unknown[];
     overallRiskRating?: string;
     estimatedDollarExposure?: Record<string, unknown>;
     executiveBrief?: Record<string, unknown>;
@@ -145,6 +146,14 @@ interface PackageContext {
   openQuestions: Record<string, unknown>[];
   sections: Array<{ title: string; body: string; confidence: number | null; evidenceIds: string[] }>;
   manifest: Record<string, unknown>;
+}
+
+interface PdfBlock {
+  type: 'section' | 'paragraph' | 'keyValues' | 'bullets' | 'note' | 'table';
+  title?: string;
+  text?: string;
+  rows?: string[][];
+  items?: string[];
 }
 
 @Component({
@@ -350,7 +359,7 @@ export class App {
 
   readonly runStatus = computed(() => {
     if (this.isSynthesizing()) {
-      return this.analysisStatus() || 'Starting gpt-5.5 background analysis against the staged evidence now.';
+      return this.analysisStatus() || 'The Distillery is analyzing the staged evidence now.';
     }
 
     const result = this.synthesisResult();
@@ -360,12 +369,12 @@ export class App {
         ? `${counts.items} items, ${counts.relationships} relationships, ${counts.artifacts} artifacts, ${counts.backlog} actions`
         : 'canonical output returned';
       const persistence = result.stored
-        ? 'Persisted to Neon.'
-        : `Not persisted to Neon: ${result.persistenceError || 'database write failed.'}`;
+        ? 'Run saved to the workspace.'
+        : `Workspace save needs attention: ${result.persistenceError || 'storage write failed.'}`;
       const fallback = result.fallbackReason ? ` ${result.fallbackReason}.` : '';
-      const analysis = result.model === 'gpt-5.5'
-        ? 'OpenAI analyzed the staged evidence'
-        : 'Fallback analysis generated a blocker-backed action pack';
+      const analysis = result.engine === 'The Distillery' || result.model
+        ? 'The Distillery analyzed the staged evidence'
+        : 'The Distillery generated a blocker-backed action pack';
       return `${analysis}: ${countText}.${fallback} ${persistence}`;
     }
 
@@ -375,10 +384,10 @@ export class App {
 
     const stats = this.sourceStats();
     if (this.limitedExtraction()) {
-      return `${stats.files} source staged (${stats.bytes}). Browser extraction found ${stats.evidenceChars} evidence characters. Some files still need native exports or connector metadata for full object-level lineage, but the retrieved evidence is ready for analysis.`;
+      return `${stats.files} source staged (${stats.bytes}). Browser extraction found ${stats.evidenceChars} evidence characters. Some files still need native exports or connector metadata for full object-level lineage, but the retrieved evidence is ready for The Distillery.`;
     }
 
-    return `${stats.files} source staged (${stats.bytes}) with ${stats.readable} readable files and ${stats.evidenceChars} evidence characters. Ready to run analysis.`;
+    return `${stats.files} source staged (${stats.bytes}) with ${stats.readable} readable files and ${stats.evidenceChars} evidence characters. Ready to run The Distillery.`;
   });
 
   readonly reportSections = computed(() => {
@@ -485,7 +494,7 @@ export class App {
     this.packError.set('');
     this.packMessage.set('');
     this.clearDownloadUrl();
-    this.analysisStatus.set('Starting OpenAI background analysis.');
+    this.analysisStatus.set('The Distillery run started.');
     this.synthesisResult.set(null);
 
     try {
@@ -559,7 +568,7 @@ export class App {
   private async pollSynthesis(responseId: string, payload: Record<string, unknown>): Promise<SynthesisResponse> {
     const maxAttempts = 120;
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-      this.analysisStatus.set(`OpenAI background analysis ${attempt === 1 ? 'started' : 'still running'} (${attempt}/${maxAttempts}).`);
+      this.analysisStatus.set(`The Distillery is ${attempt === 1 ? 'starting' : 'still running'} (${attempt}/${maxAttempts}).`);
       await this.delay(3000);
 
       const response = await fetch('/api/discovery/status', {
@@ -573,20 +582,20 @@ export class App {
       });
       const body = await this.readApiJson(response, 'Could not check synthesis status.');
       if (response.status === 202 || body.queued) {
-        this.analysisStatus.set(`OpenAI status: ${body.responseStatus || 'in progress'}. Uncle Kev is still distilling.`);
+        this.analysisStatus.set(`Distillery status: ${body.responseStatus || 'in progress'}. Uncle Kev is still distilling.`);
         continue;
       }
       if (!response.ok) {
         throw new Error(body.error || 'Could not check synthesis status.');
       }
       if (body.needsPayload) {
-        this.analysisStatus.set('OpenAI finished. Persisting the canonical model to Neon.');
+        this.analysisStatus.set('The Distillery finished. Saving the canonical model to the workspace.');
         return this.completeSynthesis(responseId, payload);
       }
       return body;
     }
 
-    throw new Error('OpenAI analysis is still running. Refresh status and try again in a minute.');
+    throw new Error('The Distillery is still running. Refresh status and try again in a minute.');
   }
 
   private async completeSynthesis(responseId: string, payload: Record<string, unknown>): Promise<SynthesisResponse> {
@@ -619,7 +628,7 @@ export class App {
       const hasEvidence = this.extractedText().trim() && !this.extractedText().startsWith('Choose files or a folder');
       if (!hasEvidence) {
         this.activeView.set('imports');
-        this.synthesisError.set('Stage sources first. The Discovery Action Pack is generated after OpenAI analysis produces the canonical model.');
+        this.synthesisError.set('Stage sources first. The Discovery Action Pack is generated after The Distillery produces the canonical model.');
         return;
       }
 
@@ -720,43 +729,58 @@ export class App {
     }
   }
 
-  async applyNeonSchema(): Promise<void> {
+  async verifyWorkspace(): Promise<void> {
     try {
       this.apiError.set('');
       const response = await fetch('/api/admin/migrate', {
         method: 'POST'
       });
-      const body = await this.readApiJson(response, 'Neon schema migration failed.');
+      const body = await this.readApiJson(response, 'Workspace verification failed.');
       if (!response.ok) {
-        throw new Error(body.error || 'Neon schema migration failed.');
+        throw new Error(body.error || 'Workspace verification failed.');
       }
       await this.checkApiHealth();
     } catch (error) {
-      this.apiError.set(error instanceof Error ? error.message : 'Neon schema migration failed.');
+      this.apiError.set(error instanceof Error ? error.message : 'Workspace verification failed.');
     }
   }
 
-  databaseStatusText(health: ApiHealth): string {
-    const database = health.database;
-    if (!database.configured) {
+  distilleryReady(health: ApiHealth | null | undefined): boolean {
+    return Boolean(health?.distillery?.ready);
+  }
+
+  workspaceReady(health: ApiHealth | null | undefined): boolean {
+    return Boolean(health?.workspace?.ready);
+  }
+
+  workspaceStatusText(health: ApiHealth): string {
+    const workspace = health.workspace;
+    if (!workspace?.configured) {
       return 'not configured';
     }
 
-    if (database.ready) {
-      const tableText = database.tableCount && database.requiredTableCount
-        ? ` (${database.tableCount}/${database.requiredTableCount} tables)`
+    if (workspace.ready) {
+      const tableText = workspace.tableCount && workspace.requiredTableCount
+        ? ` (${workspace.tableCount}/${workspace.requiredTableCount} tables)`
         : '';
-      return `${database.schema || 'distillery'} schema ready${tableText}`;
+      return `ready${tableText}`;
     }
 
-    if (database.error) {
-      return `error: ${database.error}`;
+    if (workspace.error) {
+      return `needs attention: ${workspace.error}`;
     }
 
-    const missing = database.missingTables?.length
-      ? `missing ${database.missingTables.join(', ')}`
+    const missing = workspace.missingTables?.length
+      ? `missing ${workspace.missingTables.length} workspace tables`
       : 'not ready';
-    return `${database.schema || 'distillery'} schema ${missing}`;
+    return missing;
+  }
+
+  sectionBodyLines(body: string): string[] {
+    return body
+      .split(/\n+/)
+      .map((line) => line.trim())
+      .filter(Boolean);
   }
 
   itemById(id: string): DiscoveryItem | undefined {
@@ -960,7 +984,7 @@ export class App {
       `File: ${file.name}`,
       `Size: ${file.size} bytes`,
       `Recovered string count: ${ranked.length}`,
-      'Interpretation note: these recovered strings are source evidence hints, not a full Access catalog. OpenAI must analyze them, document confidence, and call out exact exports needed to finish object-level lineage.',
+      'Interpretation note: these recovered strings are source evidence hints, not a full Access catalog. The Distillery must analyze them, document confidence, and call out exact exports needed to finish object-level lineage.',
       '',
       'Recovered strings:',
       ranked.join('\n')
@@ -1022,13 +1046,14 @@ export class App {
     const evidenceIndex = this.records((delta as Record<string, unknown>)['evidenceIndex']);
     const failureRisks = this.records((delta as Record<string, unknown>)['failureRisks']);
     const openQuestions = this.records((delta as Record<string, unknown>)['openQuestions']);
-    const systems = delta.systemsInScope?.length ? delta.systemsInScope.join(', ') : this.knownArtifacts().join(', ');
-    const criticalOutputs = delta.criticalOutputs?.length ? delta.criticalOutputs.join(', ') : this.targetOutputs().join(', ');
+    const deltaRecord = delta as Record<string, unknown>;
+    const systems = this.listText(deltaRecord['systemsInScope'], this.knownArtifacts().join(', '));
+    const criticalOutputs = this.listText(deltaRecord['criticalOutputs'], this.targetOutputs().join(', '));
 
     return [
       {
         title: 'Executive Snapshot',
-        body: `${delta.processName || this.importSourceName()} was analyzed for ${delta.businessFunction || 'data discovery and migration readiness'}. Risk is ${delta.overallRiskRating || 'unscored'}. ${this.asText(delta.recommendation) || 'Review generated items, lineage, artifacts, and actions.'}`,
+        body: this.cleanDisplayText(`${this.labelFor(delta.processName) || this.importSourceName()} was analyzed for ${this.labelFor(delta.businessFunction) || 'data discovery and migration readiness'}. Risk is ${this.labelFor(delta.overallRiskRating) || 'unscored'}. ${this.asText(delta.recommendation) || 'Review generated items, lineage, artifacts, and actions.'}`),
         confidence: null,
         evidenceIds: []
       },
@@ -1040,7 +1065,7 @@ export class App {
       },
       {
         title: 'Business Mission of the Process',
-        body: `${delta.businessFunction || 'The submitted sources support data discovery and modernization planning.'} Critical outputs: ${criticalOutputs || 'not specified'}.`,
+        body: `${this.labelFor(delta.businessFunction) || 'The submitted sources support data discovery and modernization planning.'} Critical outputs: ${criticalOutputs || 'not specified'}.`,
         confidence: null,
         evidenceIds: []
       },
@@ -1086,7 +1111,7 @@ export class App {
       },
       {
         title: 'Financial Impact and Business Exposure',
-        body: this.asText(delta.estimatedDollarExposure) || 'Dollar exposure needs business volume, unit value, recovery labor, SLA, penalty, customer, and compliance inputs before it can be priced.',
+        body: this.exposureSummary(delta.estimatedDollarExposure) || 'Dollar exposure needs business volume, unit value, recovery labor, SLA, penalty, customer, and compliance inputs before it can be priced.',
         confidence: null,
         evidenceIds: []
       },
@@ -1114,7 +1139,7 @@ export class App {
     const rawTitle = this.readString(record, ['title', 'heading', 'sectionTitle', 'section', 'name']);
     const fallbackTitle = this.reportSectionTitles[index] || `Report Section ${index + 1}`;
     const title = !rawTitle || /^analysis section\b/i.test(rawTitle) ? fallbackTitle : rawTitle;
-    const body = this.readString(record, ['body', 'narrative', 'summary', 'content', 'text']) || 'No narrative returned for this section.';
+    const body = this.cleanDisplayText(this.readString(record, ['body', 'narrative', 'summary', 'content', 'text']) || 'No narrative returned for this section.');
     const confidence = this.readNumber(record, ['confidence', 'confidenceScore']);
     const evidenceIds = this.readStringArray(record, ['evidenceIds', 'evidence_ids', 'evidence']);
     return {
@@ -1158,10 +1183,10 @@ export class App {
       packageName: 'Discovery_Action_Pack',
       generatedAt: new Date().toISOString(),
       runId: result?.runId || '',
-      model: result?.model || '',
+      engine: 'The Distillery',
       sourceKind: this.importSourceKind(),
       sourceName: this.importSourceName(),
-      storedInNeon: Boolean(result?.stored),
+      savedToWorkspace: Boolean(result?.stored),
       counts: this.generatedCounts(),
       artifacts: this.liveArtifacts().map((artifact) => artifact.name)
     };
@@ -1281,27 +1306,97 @@ export class App {
   }
 
   private buildExecutiveBriefPdf(context: PackageContext): Blob {
-    return this.buildPdf('Executive Decision Brief', [
-      `Process: ${context.delta.processName || this.importSourceName()}`,
-      `Business function: ${context.delta.businessFunction || 'Data discovery and migration readiness'}`,
-      `Risk rating: ${context.delta.overallRiskRating || 'not specified'}`,
-      `Recommendation: ${this.asText(context.delta.recommendation) || 'Review generated action plan.'}`,
-      `Decision required: ${context.delta.decisionRequired || 'Confirm owners, blockers, and migration priority.'}`,
-      'Top risks',
-      ...context.failureRisks.slice(0, 5).map((risk) => this.readString(risk, ['scenario', 'risk', 'name']) || this.asText(risk)),
-      'Executive report sections',
-      ...context.sections.slice(0, 4).flatMap((section) => [section.title, section.body])
-    ]);
+    return this.buildScientificPdf(
+      'Executive Decision Brief',
+      `${this.labelFor(context.delta.processName) || this.importSourceName()} | Discovery Action Pack`,
+      [
+        {
+          type: 'keyValues',
+          title: 'Executive Snapshot',
+          rows: [
+            ['Process', this.labelFor(context.delta.processName) || this.importSourceName()],
+            ['Business function', this.labelFor(context.delta.businessFunction) || 'Data discovery and migration readiness'],
+            ['Overall risk rating', this.labelFor(context.delta.overallRiskRating) || 'Not specified'],
+            ['Decision required', this.asText(context.delta.decisionRequired) || 'Confirm owners, blockers, and migration priority.'],
+            ['Package confidence', `${this.averageConfidence()}% starter confidence; run-specific confidence appears by section.`]
+          ]
+        },
+        {
+          type: 'section',
+          title: 'Recommendation',
+          text: this.asText(context.delta.recommendation) || 'Review generated action plan.'
+        },
+        {
+          type: 'bullets',
+          title: 'Top Failure Risks',
+          items: context.failureRisks.length
+            ? context.failureRisks.slice(0, 6).map((risk) => this.readString(risk, ['scenario', 'risk', 'name']) || this.asText(risk))
+            : ['No complete failure register was supplied. Collect control, exception, and recovery evidence for every critical output.']
+        },
+        {
+          type: 'section',
+          title: 'Financial Exposure Context',
+          text: this.exposureSummary(context.delta.estimatedDollarExposure) || 'Dollar exposure needs business volume, unit value, recovery labor, SLA, penalty, customer, and compliance inputs before it can be priced.'
+        },
+        {
+          type: 'table',
+          title: 'Evidence-Backed Report Sections',
+          rows: [
+            ['Section', 'Evidence', 'Confidence'],
+            ...context.sections.slice(0, 8).map((section) => [
+              section.title,
+              section.evidenceIds.length ? section.evidenceIds.join(', ') : 'Evidence pending',
+              section.confidence === null ? 'Not scored' : `${section.confidence}%`
+            ])
+          ]
+        }
+      ]
+    );
   }
 
   private buildArchitectureReportPdf(context: PackageContext): Blob {
-    return this.buildPdf('Current-State Architecture Report', [
-      ...context.sections.flatMap((section) => [section.title, section.body]),
-      'Canonical Items',
-      ...context.items.map((item) => `${this.readString(item, ['id'])} ${this.readString(item, ['name'])}: ${this.readString(item, ['businessPurpose'])}`),
-      'Relationships',
-      ...context.relationships.map((relationship) => `${this.readString(relationship, ['fromId', 'from_id', 'from'])} -> ${this.readString(relationship, ['toId', 'to_id', 'to'])}: ${this.readString(relationship, ['type', 'relationship_type'])}`)
-    ]);
+    return this.buildScientificPdf(
+      'Current-State Architecture Report',
+      'Evidence-backed operating model, object landscape, lineage, controls, and migration actions',
+      [
+        ...context.sections.map((section) => ({
+          type: 'section' as const,
+          title: section.title,
+          text: section.body
+        })),
+        {
+          type: 'table',
+          title: 'Canonical Items',
+          rows: [
+            ['ID', 'Type', 'Name', 'Purpose'],
+            ...context.items.slice(0, 18).map((item) => [
+              this.readString(item, ['id', 'item_id']),
+              this.readString(item, ['type']),
+              this.readString(item, ['name']),
+              this.readString(item, ['businessPurpose', 'business_purpose', 'purpose'])
+            ])
+          ]
+        },
+        {
+          type: 'table',
+          title: 'Lineage Relationships',
+          rows: [
+            ['From', 'To', 'Edge', 'Confidence'],
+            ...context.relationships.slice(0, 18).map((relationship) => [
+              this.readString(relationship, ['fromId', 'from_id', 'from']),
+              this.readString(relationship, ['toId', 'to_id', 'to']),
+              this.readString(relationship, ['type', 'relationship_type', 'edgeType']),
+              this.readString(relationship, ['confidence'])
+            ])
+          ]
+        },
+        {
+          type: 'note',
+          title: 'Quality Gate',
+          text: 'A finding is not finished unless it carries evidence, confidence, owner, failure impact, dollar context, and a recommended next action.'
+        }
+      ]
+    );
   }
 
   private async buildTechnicalWorkbook(context: PackageContext): Promise<Blob> {
@@ -1396,28 +1491,257 @@ export class App {
   }
 
   private buildPdf(title: string, lines: string[]): Blob {
-    const safeLines = [title, '', ...lines]
-      .flatMap((line) => this.wrapText(this.stripControlChars(this.asText(line)), 92))
-      .slice(0, 360);
-    const pages = this.chunk(safeLines, 46);
+    return this.buildScientificPdf(
+      title,
+      'Generated from the canonical Distillery model',
+      this.linesToPdfBlocks(lines)
+    );
+  }
+
+  private linesToPdfBlocks(lines: string[]): PdfBlock[] {
+    const blocks: PdfBlock[] = [];
+    let currentTitle = '';
+    let currentText: string[] = [];
+    const flush = (): void => {
+      if (!currentTitle && !currentText.length) {
+        return;
+      }
+      blocks.push({
+        type: currentTitle ? 'section' : 'paragraph',
+        title: currentTitle || undefined,
+        text: currentText.join('\n')
+      });
+      currentTitle = '';
+      currentText = [];
+    };
+
+    for (const line of lines) {
+      const text = this.cleanDisplayText(this.asText(line));
+      if (!text) {
+        continue;
+      }
+      const looksLikeHeading = text.length < 72 && !/[.:]$/.test(text) && /^[A-Z0-9]/.test(text);
+      if (looksLikeHeading) {
+        flush();
+        currentTitle = text;
+      } else {
+        currentText.push(text);
+      }
+    }
+    flush();
+    return blocks.length ? blocks : [{ type: 'paragraph', text: 'No report content generated.' }];
+  }
+
+  private buildScientificPdf(title: string, subtitle: string, blocks: PdfBlock[]): Blob {
+    const pageWidth = 612;
+    const pageHeight = 792;
+    const margin = 48;
+    const contentWidth = pageWidth - margin * 2;
+    const bottom = 64;
+    const bodyTop = 700;
+    const bodyPages: string[][] = [];
+    let page: string[] = [];
+    let y = bodyTop;
+
+    const newPage = (): void => {
+      page = [];
+      bodyPages.push(page);
+      y = bodyTop;
+    };
+
+    const color = (rgb: [number, number, number]): string => rgb.map((part) => part.toFixed(3).replace(/0+$/, '').replace(/\.$/, '')).join(' ');
+    const textCommand = (x: number, lineY: number, value: string, font: 'F1' | 'F2', size: number, rgb: [number, number, number]): string => {
+      return `BT /${font} ${size} Tf ${color(rgb)} rg ${x} ${lineY} Td (${this.escapePdf(this.stripControlChars(value))}) Tj ET`;
+    };
+    const rectCommand = (x: number, rectY: number, width: number, height: number, rgb: [number, number, number]): string => {
+      return `q ${color(rgb)} rg ${x} ${rectY} ${width} ${height} re f Q`;
+    };
+    const lineCommand = (x1: number, y1: number, x2: number, y2: number, rgb: [number, number, number], width = 0.75): string => {
+      return `q ${color(rgb)} RG ${width} w ${x1} ${y1} m ${x2} ${y2} l S Q`;
+    };
+    const addText = (x: number, lineY: number, value: string, font: 'F1' | 'F2', size: number, rgb: [number, number, number] = [0.09, 0.07, 0.05]): void => {
+      page.push(textCommand(x, lineY, value, font, size, rgb));
+    };
+    const addRect = (x: number, rectY: number, width: number, height: number, rgb: [number, number, number]): void => {
+      page.push(rectCommand(x, rectY, width, height, rgb));
+    };
+    const addLine = (x1: number, y1: number, x2: number, y2: number, rgb: [number, number, number], width = 0.75): void => {
+      page.push(lineCommand(x1, y1, x2, y2, rgb, width));
+    };
+    const ensure = (height: number): void => {
+      if (y - height < bottom) {
+        newPage();
+      }
+    };
+    const wrapForWidth = (value: string, width: number, size: number): string[] => {
+      return this.wrapText(this.cleanDisplayText(value), Math.max(18, Math.floor(width / (size * 0.52))));
+    };
+    const addWrapped = (value: string, size = 10.5, font: 'F1' | 'F2' = 'F1', x = margin, width = contentWidth, rgb: [number, number, number] = [0.12, 0.09, 0.07]): void => {
+      const paragraphs = this.cleanDisplayText(value).split(/\n+/).map((part) => part.trim()).filter(Boolean);
+      const lineHeight = size + 4.2;
+      for (const paragraph of paragraphs.length ? paragraphs : ['']) {
+        const lines = wrapForWidth(paragraph, width, size);
+        ensure(lines.length * lineHeight + 4);
+        for (const line of lines) {
+          addText(x, y, line, font, size, rgb);
+          y -= lineHeight;
+        }
+        y -= 3;
+      }
+    };
+    const addSectionTitle = (heading: string): void => {
+      ensure(44);
+      y -= 6;
+      addText(margin, y, this.cleanDisplayText(heading), 'F2', 13.5, [0.32, 0.18, 0.08]);
+      y -= 7;
+      addLine(margin, y, margin + contentWidth, y, [0.78, 0.48, 0.2], 0.9);
+      y -= 16;
+    };
+    const addKeyValues = (block: PdfBlock): void => {
+      if (block.title) {
+        addSectionTitle(block.title);
+      }
+      for (const row of block.rows || []) {
+        const label = this.cleanDisplayText(row[0] || '');
+        const value = this.cleanDisplayText(row[1] || '');
+        const valueLines = wrapForWidth(value, contentWidth - 170, 9.4);
+        const rowHeight = Math.max(30, valueLines.length * 12 + 14);
+        ensure(rowHeight + 6);
+        addRect(margin, y - rowHeight + 8, contentWidth, rowHeight, [0.965, 0.94, 0.9]);
+        addText(margin + 12, y - 10, label, 'F2', 8.5, [0.42, 0.26, 0.12]);
+        let valueY = y - 10;
+        for (const line of valueLines) {
+          addText(margin + 158, valueY, line, 'F1', 9.4, [0.12, 0.09, 0.07]);
+          valueY -= 12;
+        }
+        y -= rowHeight + 5;
+      }
+      y -= 5;
+    };
+    const addBullets = (block: PdfBlock): void => {
+      if (block.title) {
+        addSectionTitle(block.title);
+      }
+      for (const item of block.items || []) {
+        const lines = wrapForWidth(item, contentWidth - 20, 10);
+        ensure(lines.length * 13 + 4);
+        addText(margin, y, '-', 'F2', 10, [0.78, 0.48, 0.2]);
+        let lineY = y;
+        for (const line of lines) {
+          addText(margin + 18, lineY, line, 'F1', 10, [0.12, 0.09, 0.07]);
+          lineY -= 13;
+        }
+        y = lineY - 3;
+      }
+      y -= 4;
+    };
+    const addTable = (block: PdfBlock): void => {
+      if (block.title) {
+        addSectionTitle(block.title);
+      }
+      const rows = (block.rows || []).filter((row) => row.length);
+      if (!rows.length) {
+        addWrapped('No table rows generated.');
+        return;
+      }
+      const columns = rows[0].slice(0, 4);
+      const widths = columns.length === 2
+        ? [150, contentWidth - 150]
+        : columns.length === 3
+          ? [150, 230, contentWidth - 380]
+          : [72, 92, 150, contentWidth - 314];
+      const renderRow = (row: string[], header = false): void => {
+        const cells = columns.map((_, index) => this.cleanDisplayText(row[index] || ''));
+        const wrapped = cells.map((cell, index) => wrapForWidth(cell, widths[index] - 12, header ? 8.2 : 8));
+        const rowHeight = Math.max(header ? 26 : 34, Math.max(...wrapped.map((lines) => lines.length)) * 10 + 14);
+        ensure(rowHeight + 4);
+        addRect(margin, y - rowHeight + 8, contentWidth, rowHeight, header ? [0.16, 0.11, 0.07] : [0.985, 0.97, 0.94]);
+        let x = margin;
+        cells.forEach((_, index) => {
+          let lineY = y - 10;
+          wrapped[index].forEach((line) => {
+            addText(x + 6, lineY, line, header ? 'F2' : 'F1', header ? 8.2 : 8, header ? [1, 0.95, 0.86] : [0.12, 0.09, 0.07]);
+            lineY -= 10;
+          });
+          if (index < cells.length - 1) {
+            addLine(x + widths[index], y + 5, x + widths[index], y - rowHeight + 10, header ? [0.34, 0.24, 0.16] : [0.85, 0.78, 0.67], 0.4);
+          }
+          x += widths[index];
+        });
+        y -= rowHeight + 4;
+      };
+      renderRow(rows[0], true);
+      rows.slice(1, 16).forEach((row) => renderRow(row));
+      if (rows.length > 16) {
+        addWrapped(`${rows.length - 16} additional rows are available in the workbook and machine-readable package.`, 8.8, 'F1', margin, contentWidth, [0.42, 0.26, 0.12]);
+      }
+      y -= 6;
+    };
+    const addNote = (block: PdfBlock): void => {
+      const text = this.cleanDisplayText(block.text || '');
+      const lines = wrapForWidth(text, contentWidth - 24, 9.8);
+      const height = Math.max(48, lines.length * 12 + 34);
+      ensure(height + 8);
+      addRect(margin, y - height + 8, contentWidth, height, [1, 0.956, 0.88]);
+      if (block.title) {
+        addText(margin + 12, y - 12, block.title, 'F2', 10.4, [0.42, 0.24, 0.1]);
+      }
+      let lineY = y - 28;
+      for (const line of lines) {
+        addText(margin + 12, lineY, line, 'F1', 9.8, [0.16, 0.11, 0.07]);
+        lineY -= 12;
+      }
+      y -= height + 10;
+    };
+
+    newPage();
+    addRect(margin, y - 66, contentWidth, 64, [0.12, 0.08, 0.05]);
+    addText(margin + 14, y - 24, title, 'F2', 20, [1, 0.96, 0.88]);
+    addText(margin + 14, y - 45, this.cleanDisplayText(subtitle), 'F1', 9.4, [0.87, 0.72, 0.56]);
+    y -= 88;
+
+    for (const block of blocks) {
+      if (block.type === 'keyValues') {
+        addKeyValues(block);
+      } else if (block.type === 'bullets') {
+        addBullets(block);
+      } else if (block.type === 'table') {
+        addTable(block);
+      } else if (block.type === 'note') {
+        addNote(block);
+      } else if (block.type === 'section') {
+        if (block.title) {
+          addSectionTitle(block.title);
+        }
+        addWrapped(block.text || '');
+        y -= 4;
+      } else {
+        addWrapped(block.text || '');
+      }
+    }
+
+    const pages = bodyPages.length ? bodyPages : [[]];
     const objects: string[] = [];
     objects[1] = '<< /Type /Catalog /Pages 2 0 R >>';
     objects[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>';
+    objects[4] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>';
     const kids: string[] = [];
 
-    pages.forEach((pageLines, index) => {
-      const pageObject = 4 + index * 2;
+    pages.forEach((pageCommands, index) => {
+      const pageObject = 5 + index * 2;
       const contentObject = pageObject + 1;
       kids.push(`${pageObject} 0 R`);
       const content = [
-        'BT',
-        '/F1 10 Tf',
-        '14 TL',
-        '50 770 Td',
-        ...pageLines.map((line) => `(${this.escapePdf(line)}) Tj T*`),
-        'ET'
+        rectCommand(0, pageHeight - 44, pageWidth, 44, [0.08, 0.06, 0.04]),
+        textCommand(margin, pageHeight - 27, this.cleanDisplayText(title).slice(0, 64), 'F2', 9.5, [1, 0.96, 0.88]),
+        textCommand(pageWidth - 178, pageHeight - 27, "Uncle Kev's Distillery", 'F1', 8.4, [0.87, 0.72, 0.56]),
+        lineCommand(margin, pageHeight - 49, pageWidth - margin, pageHeight - 49, [0.78, 0.48, 0.2], 0.9),
+        ...pageCommands,
+        lineCommand(margin, 47, pageWidth - margin, 47, [0.78, 0.48, 0.2], 0.45),
+        textCommand(margin, 30, `Generated ${new Date().toLocaleDateString()} from canonical discovery evidence`, 'F1', 7.8, [0.42, 0.34, 0.26]),
+        textCommand(pageWidth - 118, 30, `Page ${index + 1} of ${pages.length}`, 'F1', 7.8, [0.42, 0.34, 0.26])
       ].join('\n');
-      objects[pageObject] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents ${contentObject} 0 R >>`;
+      objects[pageObject] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${contentObject} 0 R >>`;
       objects[contentObject] = `<< /Length ${content.length} >>\nstream\n${content}\nendstream`;
     });
 
@@ -1542,11 +1866,9 @@ ${sheetList.map((sheet) => `<Relationship Id="rId${sheet.id}" Type="http://schem
   private readString(record: Record<string, unknown>, keys: string[]): string {
     for (const key of keys) {
       const value = record[key];
-      if (typeof value === 'string' && value.trim()) {
-        return value.trim();
-      }
-      if (typeof value === 'number') {
-        return String(value);
+      const label = this.labelFor(value);
+      if (label) {
+        return label;
       }
     }
     return '';
@@ -1570,15 +1892,7 @@ ${sheetList.map((sheet) => `<Relationship Id="rId${sheet.id}" Type="http://schem
       const value = record[key];
       if (Array.isArray(value)) {
         return value
-          .map((item) => {
-            if (typeof item === 'string') {
-              return item;
-            }
-            if (item && typeof item === 'object') {
-              return this.readString(item as Record<string, unknown>, ['id', 'evidenceId', 'evidence_id', 'name']);
-            }
-            return '';
-          })
+          .map((item) => this.labelFor(item))
           .filter(Boolean);
       }
       if (typeof value === 'string' && value.trim()) {
@@ -1592,17 +1906,179 @@ ${sheetList.map((sheet) => `<Relationship Id="rId${sheet.id}" Type="http://schem
     return value && typeof value === 'object' ? value as Record<string, unknown> : {};
   }
 
+  private listText(value: unknown, fallback = ''): string {
+    const values = Array.isArray(value) ? value : [value];
+    const text = values
+      .map((item) => this.labelFor(item) || this.asText(item))
+      .map((item) => this.cleanDisplayText(item))
+      .filter(Boolean)
+      .join(', ');
+    return text || fallback;
+  }
+
+  private labelFor(value: unknown): string {
+    if (value === null || value === undefined) {
+      return '';
+    }
+    if (typeof value === 'string') {
+      return this.cleanDisplayText(value);
+    }
+    if (typeof value === 'number' || typeof value === 'boolean') {
+      return String(value);
+    }
+    if (Array.isArray(value)) {
+      return this.listText(value);
+    }
+    if (typeof value === 'object') {
+      const record = value as Record<string, unknown>;
+      const preferredKeys = [
+        'name',
+        'title',
+        'output',
+        'outputName',
+        'criticalOutput',
+        'label',
+        'id',
+        'evidenceId',
+        'evidence_id',
+        'object_name',
+        'artifact_name',
+        'summary',
+        'scenario',
+        'question'
+      ];
+      for (const key of preferredKeys) {
+        const candidate = record[key];
+        if (typeof candidate === 'string' && candidate.trim()) {
+          return this.cleanDisplayText(candidate);
+        }
+        if (typeof candidate === 'number' || typeof candidate === 'boolean') {
+          return String(candidate);
+        }
+      }
+      return this.compactObjectText(record);
+    }
+    return '';
+  }
+
+  private compactObjectText(record: Record<string, unknown>): string {
+    const exposure = this.exposureBucketText(record);
+    if (exposure) {
+      return exposure;
+    }
+    return Object.entries(record)
+      .filter(([, value]) => value !== null && value !== undefined && typeof value !== 'object')
+      .slice(0, 4)
+      .map(([key, value]) => `${this.displayKey(key)}: ${this.cleanDisplayText(String(value))}`)
+      .join('; ');
+  }
+
   private asText(value: unknown): string {
     if (value === null || value === undefined) {
       return '';
     }
     if (typeof value === 'string') {
-      return value;
+      return this.cleanDisplayText(value);
     }
     if (typeof value === 'number' || typeof value === 'boolean') {
       return String(value);
     }
-    return JSON.stringify(value);
+    if (Array.isArray(value)) {
+      return value
+        .map((item) => this.labelFor(item) || this.asText(item))
+        .map((item) => this.cleanDisplayText(item))
+        .filter(Boolean)
+        .join('; ');
+    }
+    if (typeof value === 'object') {
+      const record = value as Record<string, unknown>;
+      const exposure = this.exposureSummary(record);
+      if (exposure) {
+        return exposure;
+      }
+      return Object.entries(record)
+        .map(([key, entry]) => {
+          const text = this.asText(entry);
+          return text ? `${this.displayKey(key)}: ${text}` : '';
+        })
+        .filter(Boolean)
+        .join(' ');
+    }
+    return '';
+  }
+
+  private exposureSummary(value: unknown): string {
+    const record = this.asRecord(value);
+    if (!Object.keys(record).length) {
+      return '';
+    }
+
+    const singleBucket = this.exposureBucketText(record);
+    if (singleBucket) {
+      return singleBucket;
+    }
+
+    const bucketLines = Object.entries(record)
+      .map(([key, entry]) => {
+        if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+          const bucket = this.exposureBucketText(entry as Record<string, unknown>);
+          if (bucket) {
+            return `${this.displayKey(key)}: ${bucket}`;
+          }
+        }
+        const text = this.asText(entry);
+        return text ? `${this.displayKey(key)}: ${text}` : '';
+      })
+      .filter(Boolean);
+    return bucketLines.join('\n');
+  }
+
+  private exposureBucketText(record: Record<string, unknown>): string {
+    const hasExposureValues = ['low', 'base', 'high'].some((key) => record[key] !== undefined);
+    if (!hasExposureValues) {
+      return '';
+    }
+
+    const values = ['low', 'base', 'high']
+      .filter((key) => record[key] !== undefined)
+      .map((key) => `${this.displayKey(key)} ${this.formatExposureValue(record[key])}`)
+      .join(', ');
+    const assumptions = this.labelFor(record['assumptions']) || this.asText(record['assumptions']);
+    return this.cleanDisplayText(`${values || 'Estimate pending'}${assumptions ? `. Assumptions: ${assumptions}` : ''}.`);
+  }
+
+  private formatExposureValue(value: unknown): string {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value === 0 ? '$0' : value.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+    }
+    if (typeof value === 'string' && value.trim()) {
+      const numeric = Number(value);
+      if (Number.isFinite(numeric)) {
+        return numeric === 0 ? '$0' : numeric.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+      }
+      return this.cleanDisplayText(value);
+    }
+    return this.labelFor(value) || 'pending';
+  }
+
+  private displayKey(key: string): string {
+    return key
+      .replace(/[_-]+/g, ' ')
+      .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/^./, (letter) => letter.toUpperCase());
+  }
+
+  private cleanDisplayText(value: string): string {
+    return String(value)
+      .replace(/\r\n?/g, '\n')
+      .replace(/[^\x20-\x7E\n]/g, ' ')
+      .replace(/\[object Object\]/g, 'unlabeled object')
+      .replace(/[ \t]+/g, ' ')
+      .replace(/ *\n */g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
   }
 
   private wrapText(value: string, width: number): string[] {

@@ -1,6 +1,4 @@
-export const OPENAI_DISCOVERY_MODEL = 'gpt-5.5';
-
-export const OPENAI_RESPONSES_ENDPOINT = 'https://api.openai.com/v1/responses';
+export const DISTILLERY_ENGINE_LABEL = 'The Distillery';
 
 export interface DiscoveryAgentRequest {
   sourceKind: 'access' | 'excel' | 'word' | 'database' | 'interview' | 'mixed';
@@ -10,7 +8,7 @@ export interface DiscoveryAgentRequest {
 }
 
 export interface DiscoveryAgentContract {
-  model: typeof OPENAI_DISCOVERY_MODEL;
+  model: typeof DISTILLERY_ENGINE_LABEL;
   reasoning: {
     effort: 'high' | 'xhigh';
   };
@@ -20,7 +18,7 @@ export interface DiscoveryAgentContract {
 }
 
 export const DISCOVERY_AGENT_CONTRACT: DiscoveryAgentContract = {
-  model: OPENAI_DISCOVERY_MODEL,
+  model: DISTILLERY_ENGINE_LABEL,
   reasoning: {
     effort: 'high'
   },
