@@ -38,6 +38,7 @@ interface SynthesisResponse {
   queued?: boolean;
   needsPayload?: boolean;
   responseId?: string;
+  responseIds?: SynthesisResponseRef[];
   responseStatus?: string;
   message?: string;
   runId?: string;
@@ -51,6 +52,8 @@ interface SynthesisResponse {
   } | null;
   engine?: string;
   model?: string;
+  orchestration?: string | null;
+  passCount?: number | null;
   fallbackReason?: string | null;
   outputText?: string;
   canonicalDelta?: {
@@ -77,6 +80,13 @@ interface SynthesisResponse {
     backlog?: unknown[];
   } | null;
   error?: string;
+}
+
+interface SynthesisResponseRef {
+  key?: string | null;
+  title?: string | null;
+  responseId: string;
+  responseStatus?: string | null;
 }
 
 interface ReportSection {
@@ -516,7 +526,9 @@ export class App {
         ? 'Run saved to the workspace.'
         : `Workspace save needs attention: ${result.persistenceError || 'storage write failed.'}`;
       const fallback = result.fallbackReason ? ` ${result.fallbackReason}.` : '';
-      const analysis = result.engine === 'The Distillery' || result.model
+      const analysis = result.orchestration === 'specialist-pass'
+        ? `The Distillery completed ${result.passCount || result.responseIds?.length || 'multiple'} specialist passes`
+        : result.engine === 'The Distillery' || result.model
         ? 'The Distillery analyzed the staged evidence'
         : 'The Distillery generated a blocker-backed action pack';
       return `${analysis}: ${countText}.${fallback} ${persistence}`;
@@ -661,8 +673,9 @@ export class App {
         throw new Error(body.error || 'Synthesis failed.');
       }
 
-      const completed = body.queued && body.responseId
-        ? await this.pollSynthesis(body.responseId, payload)
+      const responseRef = this.synthesisResponseRef(body);
+      const completed = body.queued && responseRef
+        ? await this.pollSynthesis(responseRef, payload)
         : body;
 
       this.synthesisResult.set(completed);
@@ -709,10 +722,12 @@ export class App {
     resolver?.(confirmed);
   }
 
-  private async pollSynthesis(responseId: string, payload: Record<string, unknown>): Promise<SynthesisResponse> {
+  private async pollSynthesis(responseRef: string | SynthesisResponseRef[], payload: Record<string, unknown>): Promise<SynthesisResponse> {
     const maxAttempts = 120;
+    const passCount = Array.isArray(responseRef) ? responseRef.length : 1;
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-      this.analysisStatus.set(`The Distillery is ${attempt === 1 ? 'starting' : 'still running'} (${attempt}/${maxAttempts}).`);
+      const passText = passCount > 1 ? `${passCount} specialist passes` : 'the analysis pass';
+      this.analysisStatus.set(`The Distillery is ${attempt === 1 ? 'starting' : 'still running'} ${passText} (${attempt}/${maxAttempts}).`);
       await this.delay(3000);
 
       const response = await fetch('/api/discovery/status', {
@@ -720,13 +735,12 @@ export class App {
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          responseId
-        })
+        body: JSON.stringify(this.statusPayload(responseRef))
       });
       const body = await this.readApiJson(response, 'Could not check synthesis status.');
       if (response.status === 202 || body.queued) {
-        this.analysisStatus.set(`Distillery status: ${body.responseStatus || 'in progress'}. Uncle Kev is still distilling.`);
+        const activePasses = body.passCount || passCount;
+        this.analysisStatus.set(`Distillery status: ${body.responseStatus || 'in progress'}. Uncle Kev is distilling ${activePasses} specialist passes.`);
         continue;
       }
       if (!response.ok) {
@@ -734,7 +748,7 @@ export class App {
       }
       if (body.needsPayload) {
         this.analysisStatus.set('The Distillery finished. Saving the canonical model to the workspace.');
-        return this.completeSynthesis(responseId, payload);
+        return this.completeSynthesis(this.synthesisResponseRef(body) || responseRef, payload);
       }
       return body;
     }
@@ -742,14 +756,14 @@ export class App {
     throw new Error('The Distillery is still running. Refresh status and try again in a minute.');
   }
 
-  private async completeSynthesis(responseId: string, payload: Record<string, unknown>): Promise<SynthesisResponse> {
+  private async completeSynthesis(responseRef: string | SynthesisResponseRef[], payload: Record<string, unknown>): Promise<SynthesisResponse> {
     const response = await fetch('/api/discovery/status', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        responseId,
+        ...this.statusPayload(responseRef),
         ...payload
       })
     });
@@ -758,6 +772,19 @@ export class App {
       throw new Error(body.error || 'Could not persist completed synthesis.');
     }
     return body;
+  }
+
+  private synthesisResponseRef(body: SynthesisResponse): string | SynthesisResponseRef[] | null {
+    if (body.responseIds?.length) {
+      return body.responseIds.filter((entry) => Boolean(entry.responseId));
+    }
+    return body.responseId || null;
+  }
+
+  private statusPayload(responseRef: string | SynthesisResponseRef[]): { responseId?: string; responseIds?: SynthesisResponseRef[] } {
+    return Array.isArray(responseRef)
+      ? { responseIds: responseRef }
+      : { responseId: responseRef };
   }
 
   private delay(ms: number): Promise<void> {

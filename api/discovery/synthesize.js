@@ -28,7 +28,10 @@ module.exports = async function handler(request, response) {
         ok: true,
         queued: true,
         responseId: synthesis.responseId,
+        responseIds: synthesis.responseIds || null,
         responseStatus: synthesis.responseStatus,
+        orchestration: synthesis.orchestration || null,
+        passCount: synthesis.passCount || null,
         engine: 'The Distillery',
         message: 'The Distillery run started. Poll /api/discovery/status for completion.'
       });
@@ -44,6 +47,8 @@ module.exports = async function handler(request, response) {
       persistenceError: persistence.persistenceError || null,
       counts: persistence.counts || null,
       engine: 'The Distillery',
+      orchestration: synthesis.orchestration || null,
+      passCount: synthesis.passCount || null,
       fallbackReason: synthesis.fallbackReason || null,
       outputText: synthesis.outputText,
       canonicalDelta: synthesis.canonicalDelta

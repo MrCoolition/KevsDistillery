@@ -15,6 +15,7 @@ const requiredFiles = [
   'api/discovery/status.js',
   'api/discovery/synthesize.js',
   'api/_lib/db.js',
+  'api/_lib/openai.js',
   'database/schema.sql',
   'vercel.json',
   'preview.html',
@@ -59,6 +60,21 @@ if (angularVersion !== '21.2.8') {
 
 if (!source.includes("DISTILLERY_ENGINE_LABEL = 'The Distillery'")) {
   console.error('Expected public distillery engine label to be The Distillery');
+  process.exit(1);
+}
+
+if (!source.includes("OPENAI_REASONING_EFFORT || 'high'")) {
+  console.error('Expected Distillery synthesis to default to high reasoning effort');
+  process.exit(1);
+}
+
+if (!source.includes("OPENAI_VERBOSITY || 'high'")) {
+  console.error('Expected Distillery synthesis to default to high verbosity');
+  process.exit(1);
+}
+
+if (!source.includes('SPECIALIST_PASSES')) {
+  console.error('Expected specialist-pass Distillery orchestration');
   process.exit(1);
 }
 

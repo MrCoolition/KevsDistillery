@@ -12,6 +12,8 @@ export interface DiscoveryAgentContract {
   reasoning: {
     effort: 'high' | 'xhigh';
   };
+  verbosity: 'high';
+  orchestration: 'specialist-pass';
   responseFormat: 'canonical_discovery_model_delta';
   serverSideOnly: true;
   requiredOutputs: string[];
@@ -22,19 +24,24 @@ export const DISCOVERY_AGENT_CONTRACT: DiscoveryAgentContract = {
   reasoning: {
     effort: 'high'
   },
+  verbosity: 'high',
+  orchestration: 'specialist-pass',
   responseFormat: 'canonical_discovery_model_delta',
   serverSideOnly: true,
   requiredOutputs: [
-    'evidence-backed canonical fields',
-    'recursive lineage candidates',
-    'business logic extraction',
-    'business impact assumptions',
-    'actionable remediation backlog'
+    'complete canonical node-edge model',
+    'auto-documentation current state',
+    'recursive lineage to terminal nodes',
+    'logic, controls, and failure modes',
+    'financial exposure model',
+    'engineer-ready action backlog',
+    'diagram-ready visual graph data'
   ]
 };
 
 export const discoveryAgentInstructions = `
-You are Uncle Kev's Distillery discovery analyst. Distill source evidence into a canonical discovery model delta.
+You are Uncle Kev's Distillery discovery analyst. Distill source evidence into a canonical discovery model delta through specialist passes:
+canonical model, current-state documentation, recursive lineage, logic and controls, business exposure and backlog, and diagram/output package.
 
 Every discovered item must include id, type, businessPurpose, owner, evidence, confidence,
 criticality, upstream, downstream, failureImpact, dollarExposure, and recommendedAction.
