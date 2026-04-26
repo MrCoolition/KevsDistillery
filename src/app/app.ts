@@ -111,6 +111,37 @@ interface StagedSource {
   text: string;
 }
 
+interface DownloadAsset {
+  url: string;
+  filename: string;
+}
+
+interface LiveArtifact {
+  id: string;
+  name: string;
+  audience: string;
+  purpose: string;
+  progress: number;
+  sourceModel: 'canonical graph';
+}
+
+interface PackageContext {
+  result: SynthesisResponse;
+  delta: NonNullable<SynthesisResponse['canonicalDelta']>;
+  deltaRecord: Record<string, unknown>;
+  items: Record<string, unknown>[];
+  relationships: Record<string, unknown>[];
+  artifacts: Record<string, unknown>[];
+  backlog: Record<string, unknown>[];
+  evidenceIndex: Record<string, unknown>[];
+  lineageNodes: Record<string, unknown>[];
+  lineageEdges: Record<string, unknown>[];
+  failureRisks: Record<string, unknown>[];
+  openQuestions: Record<string, unknown>[];
+  sections: Array<{ title: string; body: string; confidence: number | null; evidenceIds: string[] }>;
+  manifest: Record<string, unknown>;
+}
+
 @Component({
   selector: 'td-root',
   standalone: true,
@@ -152,10 +183,12 @@ export class App {
   readonly synthesisError = signal('');
   readonly packMessage = signal('');
   readonly packError = signal('');
+  readonly lastDownload = signal<DownloadAsset | null>(null);
   readonly isGeneratingPack = signal(false);
   readonly historicalRuns = signal<HistoricalRun[]>([]);
   readonly stagedSources = signal<StagedSource[]>([]);
   readonly isExtractingSources = signal(false);
+  private activeDownloadUrl = '';
 
   readonly navItems: NavItem[] = [
     { id: 'command', label: 'Command' },
@@ -228,6 +261,9 @@ export class App {
   });
 
   readonly packageProgress = computed(() => {
+    if (this.synthesisResult()) {
+      return 100;
+    }
     const total = this.model.artifacts.reduce((sum, artifact) => sum + artifact.progress, 0);
     return Math.round(total / this.model.artifacts.length);
   });
@@ -259,7 +295,7 @@ export class App {
   readonly knownArtifacts = computed(() => this.toLines(this.knownArtifactsText()));
   readonly targetOutputs = computed(() => this.toLines(this.targetOutputsText()));
 
-  readonly liveArtifacts = computed(() => {
+  readonly liveArtifacts = computed<LiveArtifact[]>(() => {
     const generatedArtifacts = this.synthesisResult()?.canonicalDelta?.artifacts;
     if (generatedArtifacts?.length) {
       return generatedArtifacts.map((artifact, index) => ({
@@ -267,7 +303,7 @@ export class App {
         name: artifact.name || 'Generated artifact',
         audience: artifact.audience || 'Distillery crew',
         purpose: artifact.purpose || artifact.type || 'Generated from canonical discovery model.',
-        progress: artifact.status === 'final' ? 100 : 76,
+        progress: this.synthesisResult() ? 100 : artifact.status === 'final' ? 100 : 76,
         sourceModel: 'canonical graph' as const
       }));
     }
@@ -440,6 +476,7 @@ export class App {
     this.synthesisError.set('');
     this.packError.set('');
     this.packMessage.set('');
+    this.clearDownloadUrl();
     this.synthesisResult.set(null);
 
     try {
@@ -493,10 +530,32 @@ export class App {
     this.isGeneratingPack.set(true);
     try {
       await this.downloadDiscoveryActionPack();
-      this.packMessage.set('Discovery_Action_Pack.zip generated from the current canonical model.');
+      this.packMessage.set('Discovery Action Pack generated. If the browser blocked the automatic save, use the download link below.');
       this.activeView.set('reports');
     } catch (error) {
       this.packError.set(error instanceof Error ? error.message : 'Could not generate the Discovery Action Pack.');
+    } finally {
+      this.isGeneratingPack.set(false);
+    }
+  }
+
+  async downloadArtifact(artifact: LiveArtifact): Promise<void> {
+    this.packError.set('');
+    this.packMessage.set('');
+
+    if (!this.synthesisResult()) {
+      this.packError.set('Run analysis first. Artifact downloads are generated from the canonical discovery model.');
+      this.activeView.set('imports');
+      return;
+    }
+
+    this.isGeneratingPack.set(true);
+    try {
+      const generated = await this.buildArtifactDownload(artifact.name);
+      this.downloadBlob(generated.blob, generated.filename);
+      this.packMessage.set(`${generated.filename} generated. If the browser blocked the automatic save, use the download link below.`);
+    } catch (error) {
+      this.packError.set(error instanceof Error ? error.message : `Could not generate ${artifact.name}.`);
     } finally {
       this.isGeneratingPack.set(false);
     }
@@ -537,6 +596,9 @@ export class App {
     this.extractedText.set(this.buildEvidencePayload(sources));
     this.synthesisResult.set(null);
     this.synthesisError.set('');
+    this.packError.set('');
+    this.packMessage.set('');
+    this.clearDownloadUrl();
     this.isExtractingSources.set(false);
   }
 
@@ -547,6 +609,7 @@ export class App {
     this.synthesisError.set('');
     this.packError.set('');
     this.packMessage.set('');
+    this.clearDownloadUrl();
     if (fileInput) {
       fileInput.value = '';
     }
@@ -960,27 +1023,21 @@ export class App {
     };
   }
 
-  private async downloadDiscoveryActionPack(): Promise<void> {
+  private packageContext(): PackageContext {
     const result = this.synthesisResult();
     const delta = result?.canonicalDelta;
-    if (!delta) {
+    if (!result || !delta) {
       throw new Error('No canonical model is available yet. Run analysis first.');
     }
 
-    const { default: JSZip } = await import('jszip');
-    const zip = new JSZip();
-    const root = zip.folder('Discovery_Action_Pack');
-    if (!root) {
-      throw new Error('Could not create package root.');
-    }
-
+    const deltaRecord = delta as Record<string, unknown>;
     const items = this.records(delta.items);
     const relationships = this.records(delta.relationships);
     const artifacts = this.records(delta.artifacts);
     const backlog = this.records(delta.backlog);
-    const evidenceIndex = this.records((delta as Record<string, unknown>)['evidenceIndex']);
-    const lineageNodes = this.records((delta as Record<string, unknown>)['lineageNodes']).length
-      ? this.records((delta as Record<string, unknown>)['lineageNodes'])
+    const evidenceIndex = this.records(deltaRecord['evidenceIndex']);
+    const lineageNodes = this.records(deltaRecord['lineageNodes']).length
+      ? this.records(deltaRecord['lineageNodes'])
       : items.map((item) => ({
         node_id: this.readString(item, ['id', 'item_id']),
         node_type: this.readString(item, ['type']),
@@ -989,11 +1046,11 @@ export class App {
         owner: this.readString(item, ['owner']),
         confidence: this.readNumber(item, ['confidence'])
       }));
-    const lineageEdges = this.records((delta as Record<string, unknown>)['lineageEdges']).length
-      ? this.records((delta as Record<string, unknown>)['lineageEdges'])
+    const lineageEdges = this.records(deltaRecord['lineageEdges']).length
+      ? this.records(deltaRecord['lineageEdges'])
       : relationships;
-    const failureRisks = this.records((delta as Record<string, unknown>)['failureRisks']);
-    const openQuestions = this.records((delta as Record<string, unknown>)['openQuestions']);
+    const failureRisks = this.records(deltaRecord['failureRisks']);
+    const openQuestions = this.records(deltaRecord['openQuestions']);
     const sections = this.reportSections();
     const manifest = {
       packageName: 'Discovery_Action_Pack',
@@ -1007,44 +1064,212 @@ export class App {
       artifacts: this.liveArtifacts().map((artifact) => artifact.name)
     };
 
-    root.file('01_Executive_Decision_Brief.pdf', this.buildPdf('Executive Decision Brief', [
-      `Process: ${delta.processName || this.importSourceName()}`,
-      `Business function: ${delta.businessFunction || 'Data discovery and migration readiness'}`,
-      `Risk rating: ${delta.overallRiskRating || 'not specified'}`,
-      `Recommendation: ${this.asText(delta.recommendation) || 'Review generated action plan.'}`,
-      `Decision required: ${delta.decisionRequired || 'Confirm owners, blockers, and migration priority.'}`,
-      ...sections.slice(0, 2).flatMap((section) => [section.title, section.body])
-    ]));
+    return {
+      result,
+      delta,
+      deltaRecord,
+      items,
+      relationships,
+      artifacts,
+      backlog,
+      evidenceIndex,
+      lineageNodes,
+      lineageEdges,
+      failureRisks,
+      openQuestions,
+      sections,
+      manifest
+    };
+  }
 
-    root.file('02_Current_State_Architecture_Report.pdf', this.buildPdf('Current-State Architecture Report', [
-      ...sections.flatMap((section) => [section.title, section.body]),
+  private async buildArtifactDownload(artifactName: string): Promise<{ blob: Blob; filename: string }> {
+    const context = this.packageContext();
+    const normalizedName = artifactName.toLowerCase();
+
+    if (normalizedName.includes('executive')) {
+      return {
+        filename: '01_Executive_Decision_Brief.pdf',
+        blob: this.buildExecutiveBriefPdf(context)
+      };
+    }
+
+    if (normalizedName.includes('current_state') || normalizedName.includes('architecture')) {
+      return {
+        filename: '02_Current_State_Architecture_Report.pdf',
+        blob: this.buildArchitectureReportPdf(context)
+      };
+    }
+
+    if (normalizedName.includes('technical_discovery') || normalizedName.includes('workbook')) {
+      return {
+        filename: '03_Technical_Discovery_Workbook.xlsx',
+        blob: await this.buildTechnicalWorkbook(context)
+      };
+    }
+
+    if (normalizedName.includes('auto_documentation')) {
+      return {
+        filename: '04_Auto_Documentation_Pack.zip',
+        blob: await this.buildAutoDocumentationZip(context)
+      };
+    }
+
+    if (normalizedName.includes('diagram')) {
+      return {
+        filename: '05_Diagram_Pack.zip',
+        blob: await this.buildDiagramPackZip(context)
+      };
+    }
+
+    if (normalizedName.includes('financial') || normalizedName.includes('impact_model')) {
+      return {
+        filename: '06_Financial_Impact_Model.xlsx',
+        blob: await this.buildFinancialImpactWorkbook(context)
+      };
+    }
+
+    if (normalizedName.includes('action_backlog') || normalizedName.includes('backlog')) {
+      return {
+        filename: '07_Action_Backlog.csv',
+        blob: new Blob([this.toCsv(context.backlog)], { type: 'text/csv;charset=utf-8' })
+      };
+    }
+
+    if (normalizedName.includes('evidence')) {
+      return {
+        filename: '08_Evidence_Archive.zip',
+        blob: await this.buildEvidenceArchiveZip(context)
+      };
+    }
+
+    if (normalizedName.includes('manifest') || normalizedName.includes('metadata')) {
+      return {
+        filename: '09_Metadata_Manifest.json',
+        blob: new Blob([JSON.stringify(context.manifest, null, 2)], { type: 'application/json;charset=utf-8' })
+      };
+    }
+
+    return {
+      filename: `${this.safeFilename(artifactName) || 'artifact'}.json`,
+      blob: new Blob([JSON.stringify(context.delta, null, 2)], { type: 'application/json;charset=utf-8' })
+    };
+  }
+
+  private async downloadDiscoveryActionPack(): Promise<void> {
+    const context = this.packageContext();
+    const { default: JSZip } = await import('jszip');
+    const zip = new JSZip();
+    const root = zip.folder('Discovery_Action_Pack');
+    if (!root) {
+      throw new Error('Could not create package root.');
+    }
+
+    root.file('01_Executive_Decision_Brief.pdf', this.buildExecutiveBriefPdf(context));
+    root.file('02_Current_State_Architecture_Report.pdf', this.buildArchitectureReportPdf(context));
+    root.file('03_Technical_Discovery_Workbook.xlsx', await this.buildTechnicalWorkbook(context));
+    await this.addAutoDocumentationPack(root, context);
+    await this.addDiagramPack(root, context);
+    root.file('06_Financial_Impact_Model.xlsx', await this.buildFinancialImpactWorkbook(context));
+    root.file('07_Action_Backlog.csv', this.toCsv(context.backlog));
+    await this.addEvidenceArchive(root, context);
+    root.file('09_Metadata_Manifest.json', JSON.stringify(context.manifest, null, 2));
+
+    const blob = await zip.generateAsync({ type: 'blob' });
+    this.downloadBlob(blob, `Discovery_Action_Pack_${this.safeFilename(this.importSourceName()) || 'run'}.zip`);
+  }
+
+  private buildExecutiveBriefPdf(context: PackageContext): Blob {
+    return this.buildPdf('Executive Decision Brief', [
+      `Process: ${context.delta.processName || this.importSourceName()}`,
+      `Business function: ${context.delta.businessFunction || 'Data discovery and migration readiness'}`,
+      `Risk rating: ${context.delta.overallRiskRating || 'not specified'}`,
+      `Recommendation: ${this.asText(context.delta.recommendation) || 'Review generated action plan.'}`,
+      `Decision required: ${context.delta.decisionRequired || 'Confirm owners, blockers, and migration priority.'}`,
+      'Top risks',
+      ...context.failureRisks.slice(0, 5).map((risk) => this.readString(risk, ['scenario', 'risk', 'name']) || this.asText(risk)),
+      'Executive report sections',
+      ...context.sections.slice(0, 4).flatMap((section) => [section.title, section.body])
+    ]);
+  }
+
+  private buildArchitectureReportPdf(context: PackageContext): Blob {
+    return this.buildPdf('Current-State Architecture Report', [
+      ...context.sections.flatMap((section) => [section.title, section.body]),
       'Canonical Items',
-      ...items.map((item) => `${this.readString(item, ['id'])} ${this.readString(item, ['name'])}: ${this.readString(item, ['businessPurpose'])}`),
+      ...context.items.map((item) => `${this.readString(item, ['id'])} ${this.readString(item, ['name'])}: ${this.readString(item, ['businessPurpose'])}`),
       'Relationships',
-      ...relationships.map((relationship) => `${this.readString(relationship, ['fromId', 'from_id', 'from'])} -> ${this.readString(relationship, ['toId', 'to_id', 'to'])}: ${this.readString(relationship, ['type', 'relationship_type'])}`)
-    ]));
+      ...context.relationships.map((relationship) => `${this.readString(relationship, ['fromId', 'from_id', 'from'])} -> ${this.readString(relationship, ['toId', 'to_id', 'to'])}: ${this.readString(relationship, ['type', 'relationship_type'])}`)
+    ]);
+  }
 
-    root.file('03_Technical_Discovery_Workbook.xlsx', await this.buildWorkbook([
-      { name: '00_Manifest', rows: this.objectRows(manifest) },
-      { name: '01_Items', rows: this.tableRows(items) },
-      { name: '08_Lineage_Nodes', rows: this.tableRows(lineageNodes) },
-      { name: '09_Lineage_Edges', rows: this.tableRows(lineageEdges) },
-      { name: '17_Actions', rows: this.tableRows(backlog) },
-      { name: '18_Open_Questions', rows: this.tableRows(openQuestions) },
-      { name: '19_Evidence_Index', rows: this.tableRows(evidenceIndex) }
-    ]));
+  private async buildTechnicalWorkbook(context: PackageContext): Promise<Blob> {
+    return this.buildWorkbook([
+      { name: '00_Manifest', rows: this.objectRows(context.manifest) },
+      { name: '01_Artifacts', rows: this.tableRows(context.artifacts.length ? context.artifacts : this.liveArtifacts().map((artifact) => ({ ...artifact }))) },
+      { name: '03_Process_Steps', rows: this.tableRows(this.records(context.deltaRecord['processSteps']).length ? this.records(context.deltaRecord['processSteps']) : context.items) },
+      { name: '07_Data_Elements', rows: this.tableRows(this.records(context.deltaRecord['dataElements']).length ? this.records(context.deltaRecord['dataElements']) : context.items) },
+      { name: '08_Lineage_Nodes', rows: this.tableRows(context.lineageNodes) },
+      { name: '09_Lineage_Edges', rows: this.tableRows(context.lineageEdges) },
+      { name: '10_Transforms_Rules', rows: this.tableRows(context.items.filter((item) => /query|macro|transform|vba|sql|power|formula|rule/i.test(JSON.stringify(item)))) },
+      { name: '11_Controls_Exceptions', rows: this.tableRows(context.failureRisks.length ? context.failureRisks : context.backlog) },
+      { name: '16_Impact_Model', rows: this.objectRows(context.delta.estimatedDollarExposure || {}) },
+      { name: '17_Actions', rows: this.tableRows(context.backlog) },
+      { name: '18_Open_Questions', rows: this.tableRows(context.openQuestions) },
+      { name: '19_Evidence_Index', rows: this.tableRows(context.evidenceIndex.length ? context.evidenceIndex : this.evidenceFromItems(context.items)) }
+    ]);
+  }
 
-    const docs = root.folder('04_Auto_Documentation_Pack');
-    docs?.file('04a_System_Inventory.csv', this.toCsv(items.filter((item) => /system|database|file|workbook|access/i.test(this.readString(item, ['type', 'name'])))));
-    docs?.file('04b_Object_Inventory.csv', this.toCsv(items));
-    docs?.file('04c_Process_Steps.csv', this.toCsv(this.records((delta as Record<string, unknown>)['processSteps']).length ? this.records((delta as Record<string, unknown>)['processSteps']) : items));
-    docs?.file('04d_Lineage_Nodes.csv', this.toCsv(lineageNodes));
-    docs?.file('04e_Lineage_Edges.csv', this.toCsv(lineageEdges));
-    docs?.file('04f_Transformations_Rules.csv', this.toCsv(items.filter((item) => /query|macro|transform|vba|sql|power/i.test(this.readString(item, ['type', 'name', 'businessPurpose'])))));
-    docs?.file('04g_Controls_Exceptions.csv', this.toCsv(failureRisks.length ? failureRisks : backlog));
-    docs?.file('04h_Security_Access.csv', this.toCsv(items.filter((item) => /security|access|credential|pii|phi|privacy/i.test(JSON.stringify(item)))));
+  private async buildFinancialImpactWorkbook(context: PackageContext): Promise<Blob> {
+    return this.buildWorkbook([
+      { name: 'High_Level_Context', rows: this.objectRows(context.delta.estimatedDollarExposure || {}) },
+      { name: 'Failure_Scenarios', rows: this.tableRows(context.failureRisks) },
+      { name: 'Pricing_Inputs_Needed', rows: [
+        ['Bucket', 'Input needed'],
+        ['Revenue at risk', 'Units affected and dollar per unit'],
+        ['Gross margin at risk', 'Margin percent by impacted output'],
+        ['Cash timing impact', 'Billing, collection, close, or reporting delay value'],
+        ['Rework labor cost', 'Recovery hours, loaded labor rate, frequency'],
+        ['Compliance / SLA / customer impact', 'Penalty, credit, audit, churn, or commitment exposure']
+      ] },
+      { name: 'Actions', rows: this.tableRows(context.backlog) }
+    ]);
+  }
 
-    const diagrams = root.folder('05_Diagram_Pack');
+  private async buildAutoDocumentationZip(context: PackageContext): Promise<Blob> {
+    const { default: JSZip } = await import('jszip');
+    const zip = new JSZip();
+    await this.addAutoDocumentationPack(zip, context);
+    return zip.generateAsync({ type: 'blob' });
+  }
+
+  private async buildDiagramPackZip(context: PackageContext): Promise<Blob> {
+    const { default: JSZip } = await import('jszip');
+    const zip = new JSZip();
+    await this.addDiagramPack(zip, context);
+    return zip.generateAsync({ type: 'blob' });
+  }
+
+  private async buildEvidenceArchiveZip(context: PackageContext): Promise<Blob> {
+    const { default: JSZip } = await import('jszip');
+    const zip = new JSZip();
+    await this.addEvidenceArchive(zip, context);
+    return zip.generateAsync({ type: 'blob' });
+  }
+
+  private async addAutoDocumentationPack(zip: unknown, context: PackageContext): Promise<void> {
+    const folder = (zip as { folder: (name: string) => { file: (path: string, data: string | Blob) => void } | null }).folder('04_Auto_Documentation_Pack');
+    folder?.file('04a_System_Inventory.csv', this.toCsv(context.items.filter((item) => /system|database|file|workbook|access/i.test(JSON.stringify(item)))));
+    folder?.file('04b_Object_Inventory.csv', this.toCsv(context.items));
+    folder?.file('04c_Process_Steps.csv', this.toCsv(this.records(context.deltaRecord['processSteps']).length ? this.records(context.deltaRecord['processSteps']) : context.items));
+    folder?.file('04d_Lineage_Nodes.csv', this.toCsv(context.lineageNodes));
+    folder?.file('04e_Lineage_Edges.csv', this.toCsv(context.lineageEdges));
+    folder?.file('04f_Transformations_Rules.csv', this.toCsv(context.items.filter((item) => /query|macro|transform|vba|sql|power|formula|rule/i.test(JSON.stringify(item)))));
+    folder?.file('04g_Controls_Exceptions.csv', this.toCsv(context.failureRisks.length ? context.failureRisks : context.backlog));
+    folder?.file('04h_Security_Access.csv', this.toCsv(context.items.filter((item) => /security|access|credential|pii|phi|privacy/i.test(JSON.stringify(item)))));
+  }
+
+  private async addDiagramPack(zip: unknown, context: PackageContext): Promise<void> {
+    const folder = (zip as { folder: (name: string) => { file: (path: string, data: string | Blob) => void } | null }).folder('05_Diagram_Pack');
     const diagramNames = [
       'D01_Executive_Value_Stream.pdf',
       'D02_System_Context_Diagram.pdf',
@@ -1057,24 +1282,15 @@ export class App {
       'D09_Schedule_And_Refresh_Timeline.pdf'
     ];
     for (const diagramName of diagramNames) {
-      diagrams?.file(diagramName, this.buildPdf(diagramName.replace('.pdf', '').replace(/_/g, ' '), this.diagramLines(diagramName, items, relationships, failureRisks)));
+      folder?.file(diagramName, this.buildPdf(diagramName.replace('.pdf', '').replace(/_/g, ' '), this.diagramLines(diagramName, context.items, context.relationships, context.failureRisks)));
     }
+  }
 
-    root.file('06_Financial_Impact_Model.xlsx', await this.buildWorkbook([
-      { name: 'Scenarios', rows: this.tableRows(failureRisks) },
-      { name: 'Exposure', rows: this.objectRows(delta.estimatedDollarExposure || {}) },
-      { name: 'Assumptions', rows: [['Assumption'], [this.asText(delta.estimatedDollarExposure) || 'Pricing requires volume, unit value, SLA, labor, penalty, and customer impact evidence.']] }
-    ]));
-
-    root.file('07_Action_Backlog.csv', this.toCsv(backlog));
-    const evidence = root.folder('08_Evidence_Archive');
-    evidence?.folder('Document_Extracts')?.file('Extracted_Evidence.txt', this.extractedText());
-    evidence?.folder('Document_Extracts')?.file('Canonical_Model.json', JSON.stringify(delta, null, 2));
-    evidence?.file('Evidence_Index.csv', this.toCsv(evidenceIndex.length ? evidenceIndex : this.evidenceFromItems(items)));
-    root.file('09_Metadata_Manifest.json', JSON.stringify(manifest, null, 2));
-
-    const blob = await zip.generateAsync({ type: 'blob' });
-    this.downloadBlob(blob, `Discovery_Action_Pack_${this.safeFilename(this.importSourceName()) || 'run'}.zip`);
+  private async addEvidenceArchive(zip: unknown, context: PackageContext): Promise<void> {
+    const folder = (zip as { folder: (name: string) => { file: (path: string, data: string | Blob) => void; folder: (path: string) => { file: (path: string, data: string | Blob) => void } | null } | null }).folder('08_Evidence_Archive');
+    folder?.folder('Document_Extracts')?.file('Extracted_Evidence.txt', this.extractedText());
+    folder?.folder('Document_Extracts')?.file('Canonical_Model.json', JSON.stringify(context.delta, null, 2));
+    folder?.file('Evidence_Index.csv', this.toCsv(context.evidenceIndex.length ? context.evidenceIndex : this.evidenceFromItems(context.items)));
   }
 
   private buildPdf(title: string, lines: string[]): Blob {
@@ -1345,12 +1561,27 @@ ${sheetList.map((sheet) => `<Relationship Id="rId${sheet.id}" Type="http://schem
   }
 
   private downloadBlob(blob: Blob, filename: string): void {
+    this.clearDownloadUrl();
     const url = URL.createObjectURL(blob);
+    this.activeDownloadUrl = url;
+    this.lastDownload.set({ url, filename });
+
     const anchor = document.createElement('a');
     anchor.href = url;
     anchor.download = filename;
+    anchor.rel = 'noopener';
+    anchor.style.display = 'none';
+    document.body.appendChild(anchor);
     anchor.click();
-    URL.revokeObjectURL(url);
+    anchor.remove();
+  }
+
+  private clearDownloadUrl(): void {
+    if (this.activeDownloadUrl) {
+      URL.revokeObjectURL(this.activeDownloadUrl);
+      this.activeDownloadUrl = '';
+    }
+    this.lastDownload.set(null);
   }
 
   private accessStringScore(value: string): number {

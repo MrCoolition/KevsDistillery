@@ -346,6 +346,11 @@
                 @if (packMessage()) {
                   <p class="success-line">{{ packMessage() }}</p>
                 }
+                @if (lastDownload(); as download) {
+                  <a class="download-ready" [href]="download.url" [attr.download]="download.filename">
+                    Download {{ download.filename }}
+                  </a>
+                }
                 @if (packError()) {
                   <p class="error-line">{{ packError() }}</p>
                 }
@@ -589,6 +594,11 @@
             @if (packMessage()) {
               <p class="success-line">{{ packMessage() }}</p>
             }
+            @if (lastDownload(); as download) {
+              <a class="download-ready" [href]="download.url" [attr.download]="download.filename">
+                Download {{ download.filename }}
+              </a>
+            }
             @if (packError()) {
               <p class="error-line">{{ packError() }}</p>
             }
@@ -599,7 +609,14 @@
                 <div>
                   <strong>/Discovery_Action_Pack/</strong>
                   @for (artifact of liveArtifacts(); track artifact.id) {
-                    <span>{{ artifact.name }}</span>
+                    <button
+                      type="button"
+                      class="pack-tree-item"
+                      [disabled]="!synthesisResult() || isGeneratingPack()"
+                      (click)="downloadArtifact(artifact)"
+                    >
+                      {{ artifact.name }}
+                    </button>
                   }
                 </div>
               </aside>
@@ -627,7 +644,13 @@
 
             <div class="pack-grid">
               @for (artifact of liveArtifacts(); track artifact.id) {
-                <article class="artifact-card">
+                <button
+                  type="button"
+                  class="artifact-card"
+                  [disabled]="!synthesisResult() || isGeneratingPack()"
+                  (click)="downloadArtifact(artifact)"
+                  [attr.aria-label]="'Download ' + artifact.name"
+                >
                   <div>
                     <span>{{ artifact.id }}</span>
                     <strong>{{ artifact.name }}</strong>
@@ -637,10 +660,13 @@
                     <span></span>
                   </div>
                   <footer>
-                    <em>{{ artifact.audience }}</em>
+                    <em>{{ synthesisResult() ? 'Click to download' : artifact.audience }}</em>
                     <strong>{{ artifact.progress }}%</strong>
                   </footer>
-                </article>
+                  <small class="artifact-action">
+                    {{ synthesisResult() ? 'Download artifact' : 'Run analysis first' }}
+                  </small>
+                </button>
               }
             </div>
           </section>

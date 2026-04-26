@@ -151,7 +151,7 @@ export const discoveryModel: DiscoveryModel = {
     { id: '03', name: '03_Technical_Discovery_Workbook.xlsx', audience: 'Engineers / analysts', purpose: 'Structured inventory of objects, logic, lineage, risks, and actions.', progress: 0, sourceModel: 'canonical graph' },
     { id: '04', name: '04_Auto_Documentation_Pack', audience: 'Automation / governance', purpose: 'Machine-readable current-state documentation.', progress: 0, sourceModel: 'canonical graph' },
     { id: '05', name: '05_Diagram_Pack', audience: 'All audiences', purpose: 'Process, data flow, lineage, dependency, control, failure, and timeline diagrams.', progress: 0, sourceModel: 'canonical graph' },
-    { id: '06', name: '06_Business_Impact_Model.xlsx', audience: 'Leadership / operations', purpose: 'Scenario-based impact model for late, wrong, failed, partial, or unauditable processes.', progress: 0, sourceModel: 'canonical graph' },
+    { id: '06', name: '06_Financial_Impact_Model.xlsx', audience: 'Leadership / operations', purpose: 'Scenario-based dollar exposure model for late, wrong, failed, partial, or unauditable processes.', progress: 0, sourceModel: 'canonical graph' },
     { id: '07', name: '07_Action_Backlog.csv', audience: 'Delivery teams', purpose: 'Ready-to-work modernization and remediation actions.', progress: 0, sourceModel: 'canonical graph' },
     { id: '08', name: '08_Evidence_Archive', audience: 'Audit / project team', purpose: 'Proof behind every finding.', progress: 0, sourceModel: 'canonical graph' },
     { id: '09', name: '09_Metadata_Manifest.json', audience: 'Automation / governance', purpose: 'Traceable metadata manifest for the full package.', progress: 0, sourceModel: 'canonical graph' }

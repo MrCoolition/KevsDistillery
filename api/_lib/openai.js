@@ -8,11 +8,13 @@ function buildInstructions(sourceKind, sourceName) {
     'Return one compact valid JSON object only. No markdown.',
     'Analyze retrieved evidence, not just filenames. Mark weak evidence as blocked with the smallest source needed to finish.',
     'Required top-level keys: processName, businessFunction, recommendation, decisionRequired, systemsInScope, criticalOutputs, overallRiskRating, estimatedDollarExposure, executiveBrief, reportSections, items, relationships, artifacts, backlog, evidenceIndex, lineageNodes, lineageEdges, failureRisks, openQuestions.',
-    'reportSections: exactly 6 concise sections. Each section MUST use the title property with one of these exact titles in order: Executive Snapshot, Scope and Evidence, Current-State Operating Model, Lineage and Business Logic, Controls and Failure Modes, Action Plan. Never use generic names like Analysis Section. Body under 45 words. Include confidence and evidenceIds.',
-    'items: max 6 high-signal nodes. Each item requires id, type, name, businessPurpose, owner, evidence, confidence, criticality, upstream, downstream, failureImpact, dollarExposure, recommendedAction, status.',
+    'reportSections: exactly 12 concise sections. Each section MUST use the title property with these exact titles in order: Executive Snapshot; Scope, Coverage, and Confidence; Business Mission of the Process; Current-State Operating Model; System and Artifact Landscape; Data Flow and Process Flow Summary; Transformations and Business Logic; Recursive Lineage and Source-of-Truth Assessment; Controls, Exceptions, and Failure Modes; Financial Impact and Business Exposure; Recommendations and Action Plan; Open Questions and Decisions Needed. Never use generic names like Analysis Section. Body under 75 words. Include confidence and evidenceIds.',
+    'items: up to 12 high-signal canonical nodes. Each item requires id, type, name, businessPurpose, owner, evidence, confidence, criticality, upstream, downstream, failureImpact, dollarExposure, recommendedAction, status.',
     'recommendedAction requires mode, summary, owner, priority, acceptanceCriteria. dollarExposure requires low, base, high, assumptions.',
-    'relationships max 8. backlog max 5. evidenceIndex max 4. openQuestions max 3. Use one evidence object per item.',
-    'artifacts must list the 9 Discovery_Action_Pack outputs with short purpose text. Keep all prose short.'
+    'relationships up to 20. backlog up to 12. evidenceIndex up to 12. openQuestions up to 8. Use evidence objects that tie findings to retrieved content or explicit blockers.',
+    'estimatedDollarExposure must cover revenue at risk, gross margin at risk, cash timing impact, rework labor cost, and compliance/SLA/customer exposure. If pricing evidence is missing, use zero low/base/high and state the exact business inputs needed.',
+    'artifacts must list the 9 Discovery_Action_Pack outputs with short purpose text and status final: 01_Executive_Decision_Brief.pdf, 02_Current_State_Architecture_Report.pdf, 03_Technical_Discovery_Workbook.xlsx, 04_Auto_Documentation_Pack, 05_Diagram_Pack, 06_Financial_Impact_Model.xlsx, 07_Action_Backlog.csv, 08_Evidence_Archive, 09_Metadata_Manifest.json.',
+    'Every critical output must have current-state narrative, diagram coverage, recursive lineage, business logic extraction, financial exposure, and a clear action recommendation or blocker.'
   ].join('\n');
 }
 
@@ -96,7 +98,7 @@ async function synthesizeWithOpenAI(payload) {
         model,
         reasoning: { effort: 'low' },
         instructions: buildInstructions(sourceKind, sourceName),
-        max_output_tokens: 4800,
+        max_output_tokens: 9000,
         text: {
           format: {
             type: 'json_object'
