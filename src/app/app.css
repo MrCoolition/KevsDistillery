@@ -697,6 +697,55 @@ meter {
   font-weight: 760;
 }
 
+.run-result {
+  margin-top: 14px;
+  border-left: 3px solid var(--amber);
+  border-radius: 6px;
+  background: rgba(216, 139, 53, 0.12);
+  color: var(--ink-2);
+  padding: 14px;
+}
+
+.run-result strong,
+.run-result p,
+.run-result small {
+  display: block;
+}
+
+.run-result strong {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.run-result p {
+  margin: 7px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.run-result small {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.run-result.running {
+  border-left-color: var(--mint);
+  background: rgba(31, 191, 156, 0.13);
+}
+
+.run-result.warning {
+  border-left-color: var(--amber);
+}
+
+.run-result.success {
+  border-left-color: var(--mint);
+  background: rgba(31, 191, 156, 0.13);
+}
+
 .import-side {
   display: grid;
   align-content: start;

@@ -318,6 +318,22 @@
                   </button>
                 </div>
 
+                <section
+                  class="run-result"
+                  [class.running]="isSynthesizing()"
+                  [class.warning]="limitedExtraction()"
+                  [class.success]="synthesisResult()"
+                >
+                  <strong>Still status</strong>
+                  <p>{{ runStatus() }}</p>
+                  @if (apiHealth(); as health) {
+                    <small>
+                      OpenAI {{ health.openAIConfigured ? 'ready' : 'missing' }}.
+                      Neon {{ health.database.ready ? 'schema ready' : (health.database.configured ? 'schema pending' : 'not configured') }}.
+                    </small>
+                  }
+                </section>
+
                 @if (synthesisError()) {
                   <p class="error-line">{{ synthesisError() }}</p>
                 }

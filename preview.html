@@ -664,13 +664,39 @@
       }
 
       .run-result {
-        border-left: 3px solid var(--mint);
-        background: var(--mint-2);
+        border-left: 3px solid var(--amber);
+        border-radius: 6px;
+        background: rgba(216, 139, 53, 0.12);
         color: var(--ink-2);
         margin-top: 14px;
-        padding: 12px;
+        padding: 14px;
         font-size: 13px;
         line-height: 1.45;
+        white-space: pre-wrap;
+      }
+
+      .run-result strong,
+      .run-result small {
+        display: block;
+      }
+
+      .run-result strong {
+        color: var(--ink);
+        font-size: 12px;
+        font-weight: 900;
+        text-transform: uppercase;
+      }
+
+      .run-result small {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .run-result.running,
+      .run-result.success {
+        border-left-color: var(--mint);
+        background: rgba(31, 191, 156, 0.13);
       }
 
       .status-list {
@@ -1450,6 +1476,7 @@
       const views = Array.from(document.querySelectorAll('.view'));
       const extractorButtons = Array.from(document.querySelectorAll('.source-type-grid button'));
       const stagedSources = [];
+      let lastHealth = null;
 
       function showView(id) {
         tabs.forEach((tab) => tab.classList.toggle('active', tab.dataset.view === id));
@@ -1642,6 +1669,49 @@
         return payload.join('\n\n').slice(0, 240000);
       }
 
+      function extractionIsLimited() {
+        return stagedSources.some((source) => {
+          return source.status.includes('metadata') || source.status.includes('binary') || source.status.includes('failed');
+        });
+      }
+
+      function healthLine() {
+        if (!lastHealth) {
+          return 'Backend health has not been checked yet.';
+        }
+        const openAiState = lastHealth.openAIConfigured ? 'OpenAI ready' : 'OpenAI missing';
+        const neonState = lastHealth.database?.ready
+          ? 'Neon schema ready'
+          : (lastHealth.database?.configured ? 'Neon schema pending' : 'Neon not configured');
+        return `${openAiState}. ${neonState}. Model ${lastHealth.model}.`;
+      }
+
+      function setRunStatus(message, mode = '') {
+        const result = document.getElementById('run-result');
+        result.hidden = false;
+        result.className = `run-result ${mode}`.trim();
+        result.innerHTML = `<strong>Still status</strong>${message}<small>${healthLine()}</small>`;
+      }
+
+      function updateRunStatus() {
+        if (!stagedSources.length) {
+          setRunStatus('<p>Ready. Choose files or a folder to stage a source batch.</p>');
+          return;
+        }
+
+        const bytes = stagedSources.reduce((sum, source) => sum + source.size, 0);
+        const readable = stagedSources.filter((source) => source.status.includes('extracted')).length;
+        const chars = stagedSources.reduce((sum, source) => sum + source.text.length, 0);
+        const files = stagedSources.length;
+
+        if (extractionIsLimited()) {
+          setRunStatus(`<p>${files} source staged (${formatBytes(bytes)}). Browser extraction found ${chars.toLocaleString()} evidence characters.</p><p>Access .accdb/.mdb files are metadata-only in the browser. That is expected. For deep Access discovery, add an exported object inventory, saved SQL, VBA modules, or a native Access extractor. You can still fire the still now to produce a blocker-backed discovery pass.</p>`, 'warning');
+          return;
+        }
+
+        setRunStatus(`<p>${files} source staged (${formatBytes(bytes)}), ${readable} readable, ${chars.toLocaleString()} evidence characters. Ready to fire the still.</p>`, 'success');
+      }
+
       function renderStagedSources(loading) {
         const table = document.getElementById('source-table');
         const bytes = stagedSources.reduce((sum, source) => sum + source.size, 0);
@@ -1655,6 +1725,9 @@
 
         if (!stagedSources.length) {
           table.innerHTML = `<div class="source-row"><strong>${loading ? 'Extracting files...' : 'No files selected'}</strong><span>${loading ? 'running' : 'waiting'}</span><em>0 KB</em></div>`;
+          if (!loading) {
+            updateRunStatus();
+          }
           return;
         }
 
@@ -1665,14 +1738,16 @@
             <em>${formatBytes(source.size)}</em>
           </div>
         `).join('');
+        if (!loading) {
+          updateRunStatus();
+        }
       }
 
       async function executeDistillery() {
         const result = document.getElementById('run-result');
         const evidence = document.getElementById('evidence-payload').value.trim();
         if (!evidence) {
-          result.hidden = false;
-          result.textContent = 'No evidence payload is staged. Choose files or paste evidence before firing the still.';
+          setRunStatus('<p>No evidence payload is staged. Choose files or paste evidence before firing the still.</p>', 'warning');
           return;
         }
 
@@ -1681,8 +1756,7 @@
           return;
         }
 
-        result.hidden = false;
-        result.textContent = "Firing Uncle Kev's still...";
+        setRunStatus('<p>Running gpt-5.5 against the staged evidence now. The still is working.</p>', 'running');
         document.getElementById('execute-distillery').disabled = true;
 
         try {
@@ -1705,41 +1779,36 @@
           }
 
           const counts = body.counts || {};
-          result.textContent = [
-            `Batch ${body.runId || 'completed'} bottled with ${body.model || 'configured model'}.`,
-            `Items: ${counts.items ?? 'n/a'}; Relationships: ${counts.relationships ?? 'n/a'}; Artifacts: ${counts.artifacts ?? 'n/a'}; Backlog: ${counts.backlog ?? 'n/a'}.`,
-            body.stored ? 'Persisted to Neon.' : 'Neon is not configured locally, so this run was not persisted.'
-          ].join('\n');
+          setRunStatus(`<p>Batch ${body.runId || 'completed'} bottled with ${body.model || 'configured model'}.</p><p>Items: ${counts.items ?? 'n/a'}; Relationships: ${counts.relationships ?? 'n/a'}; Artifacts: ${counts.artifacts ?? 'n/a'}; Backlog: ${counts.backlog ?? 'n/a'}.</p><p>${body.stored ? 'Persisted to Neon.' : 'Neon persistence is pending; the synthesis still completed.'}</p>`, 'success');
           showView('reports');
         } catch (error) {
-          result.textContent = error instanceof Error ? error.message : 'Still run failed.';
+          setRunStatus(`<p>${error instanceof Error ? error.message : 'Still run failed.'}</p>`, 'warning');
         } finally {
           document.getElementById('execute-distillery').disabled = false;
         }
       }
 
       async function refreshHealth() {
-        const result = document.getElementById('run-result');
-        result.hidden = false;
         try {
           const response = await fetch('/api/health');
           const body = await response.json();
+          lastHealth = body;
           const openAiState = body.openAIConfigured ? 'configured' : 'missing';
           const neonState = body.database?.ready ? 'schema ready' : (body.database?.configured ? 'configured, schema pending' : 'not configured');
           document.getElementById('status-openai').textContent = `OpenAI ${openAiState}`;
           document.getElementById('status-neon').textContent = `Neon ${neonState}`;
           document.getElementById('health-openai').textContent = openAiState;
           document.getElementById('health-neon').textContent = neonState;
-          result.textContent = `Health: OpenAI ${openAiState}, Neon ${neonState}, model ${body.model}.`;
+          updateRunStatus();
         } catch (error) {
-          result.textContent = error instanceof Error ? error.message : 'Health check failed.';
+          setRunStatus(`<p>${error instanceof Error ? error.message : 'Health check failed.'}</p>`, 'warning');
         }
       }
 
       async function applySchema() {
         const result = document.getElementById('run-result');
         result.hidden = false;
-        result.textContent = 'Applying Neon schema...';
+        setRunStatus('<p>Applying Neon schema...</p>', 'running');
         try {
           const response = await fetch('/api/admin/migrate', {
             method: 'POST'
@@ -1748,10 +1817,10 @@
           if (!response.ok) {
             throw new Error(body.error || 'Schema migration failed.');
           }
-          result.textContent = body.databaseReady ? 'Neon schema applied.' : 'Neon schema endpoint completed.';
+          setRunStatus(`<p>${body.databaseReady ? 'Neon schema applied.' : 'Neon schema endpoint completed.'}</p>`, body.databaseReady ? 'success' : 'warning');
           await refreshHealth();
         } catch (error) {
-          result.textContent = error instanceof Error ? error.message : 'Schema migration failed.';
+          setRunStatus(`<p>${error instanceof Error ? error.message : 'Schema migration failed.'}</p>`, 'warning');
         }
       }
 

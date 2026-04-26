@@ -247,6 +247,39 @@ export class App {
     };
   });
 
+  readonly limitedExtraction = computed(() => {
+    return this.stagedSources().some((source) => {
+      return source.status.includes('metadata') || source.status.includes('binary') || source.status.includes('failed');
+    });
+  });
+
+  readonly runStatus = computed(() => {
+    if (this.isSynthesizing()) {
+      return 'Running gpt-5.5 against the staged evidence now. The still is working.';
+    }
+
+    const result = this.synthesisResult();
+    if (result) {
+      const counts = result.counts;
+      const countText = counts
+        ? `${counts.items} items, ${counts.relationships} relationships, ${counts.artifacts} artifacts, ${counts.backlog} actions`
+        : 'canonical output returned';
+      const persistence = result.stored ? 'Persisted to Neon.' : 'Neon persistence is pending; the synthesis still completed.';
+      return `Batch bottled: ${countText}. ${persistence}`;
+    }
+
+    if (!this.stagedSources().length) {
+      return 'Ready. Choose files or a folder to stage a source batch.';
+    }
+
+    const stats = this.sourceStats();
+    if (this.limitedExtraction()) {
+      return `${stats.files} source staged (${stats.bytes}). Browser extraction found ${stats.evidenceChars} evidence characters. Binary Access files are metadata-only in the browser; export Access object inventory, saved SQL, VBA, or use a native extractor for deep table/query lineage. You can still fire the still to generate a blocker-backed discovery pass.`;
+    }
+
+    return `${stats.files} source staged (${stats.bytes}) with ${stats.readable} readable files and ${stats.evidenceChars} evidence characters. Ready to fire the still.`;
+  });
+
   readonly reportSections = computed(() => [
     {
       title: 'Executive Snapshot',
@@ -333,6 +366,7 @@ export class App {
 
     this.isSynthesizing.set(true);
     this.synthesisError.set('');
+    this.synthesisResult.set(null);
 
     try {
       const response = await fetch('/api/discovery/synthesize', {
@@ -381,12 +415,16 @@ export class App {
     this.importSourceName.set(files.length === 1 ? files[0].name : `${files.length} source files in the mash bill`);
     this.knownArtifactsText.set(sources.map((source) => source.path).join('\n'));
     this.extractedText.set(this.buildEvidencePayload(sources));
+    this.synthesisResult.set(null);
+    this.synthesisError.set('');
     this.isExtractingSources.set(false);
   }
 
   clearSources(fileInput?: HTMLInputElement, folderInput?: HTMLInputElement): void {
     this.stagedSources.set([]);
-    this.extractedText.set('');
+    this.extractedText.set('Choose files or a folder above. Extracted evidence will collect here before the still runs.');
+    this.synthesisResult.set(null);
+    this.synthesisError.set('');
     if (fileInput) {
       fileInput.value = '';
     }
