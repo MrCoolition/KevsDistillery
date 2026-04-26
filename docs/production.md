@@ -1,6 +1,6 @@
 # Production Setup
 
-THE DISTILLERY is productionized as a Vercel Angular app with Vercel Functions and Neon Postgres persistence.
+Uncle Kev's Distillery is productionized as a Vercel Angular app with Vercel Functions and Neon Postgres persistence.
 
 ## Vercel Environment Variables
 

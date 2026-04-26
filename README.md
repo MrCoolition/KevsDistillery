@@ -1,6 +1,6 @@
-# THE DISTILLERY
+# Uncle Kev's Distillery
 
-THE DISTILLERY is an Angular 21 standalone app for graph-backed enterprise data discovery. It lets teams browse real source files and folders, extract evidence, build one canonical node-edge model, and generate executive reports, auto-documentation, diagrams, recursive lineage, business-impact analysis, and remediation backlog outputs for Snowflake migration teams using Fivetran, dbt, SQL, and Snowpark.
+Uncle Kev's Distillery is an Angular 21 standalone app for graph-backed enterprise data discovery. It lets teams browse real source files and folders, extract evidence, build one canonical proof graph, and bottle executive reports, auto-documentation, diagrams, recursive lineage, business-impact analysis, and remediation backlog outputs for Snowflake migration teams using Fivetran, dbt, SQL, and Snowpark.
 
 ## Run
 

@@ -29,8 +29,8 @@ async function readJson(request) {
 
 function buildInstructions(sourceKind, sourceName) {
   return [
-    'You are THE DISTILLERY discovery analyst.',
-    `Source kind: ${sourceKind}. Source name: ${sourceName}.`,
+    'You are Uncle Kev\'s Distillery discovery analyst.',
+    `Source kind: ${sourceKind}. Batch name: ${sourceName}.`,
     'Return valid JSON only.',
     'The JSON must describe a canonical discovery model delta with items, relationships, evidence, business impact assumptions, and backlog actions.',
     'Every discovered item must include id, type, businessPurpose, owner, evidence, confidence, criticality, upstream, downstream, failureImpact, dollarExposure, and recommendedAction. Use dollarExposure only as an optional impact estimate when source evidence supports it.',
@@ -140,5 +140,5 @@ const server = createServer(async (request, response) => {
 });
 
 server.listen(port, '127.0.0.1', () => {
-  console.log(`THE DISTILLERY discovery API listening on http://127.0.0.1:${port}`);
+  console.log(`Uncle Kev's Distillery discovery API listening on http://127.0.0.1:${port}`);
 });

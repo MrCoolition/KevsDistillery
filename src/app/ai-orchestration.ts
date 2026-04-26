@@ -36,7 +36,7 @@ export const DISCOVERY_AGENT_CONTRACT: DiscoveryAgentContract = {
 };
 
 export const discoveryAgentInstructions = `
-You are THE DISTILLERY discovery analyst. Convert source evidence into a canonical discovery model delta.
+You are Uncle Kev's Distillery discovery analyst. Distill source evidence into a canonical discovery model delta.
 
 Every discovered item must include id, type, businessPurpose, owner, evidence, confidence,
 criticality, upstream, downstream, failureImpact, dollarExposure, and recommendedAction.

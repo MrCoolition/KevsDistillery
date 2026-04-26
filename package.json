@@ -2,7 +2,7 @@
   "name": "the-distillery",
   "version": "0.1.0",
   "private": true,
-  "description": "Graph-backed data discovery command center for Snowflake, Fivetran, dbt, and Snowpark migration teams.",
+  "description": "Uncle Kev's Distillery: proof-grade data discovery for Snowflake, Fivetran, dbt, and Snowpark migration teams.",
   "engines": {
     "node": ">=22.12.0 <25"
   },

@@ -66,5 +66,5 @@ const server = createServer(async (request, response) => {
 });
 
 server.listen(port, '127.0.0.1', () => {
-  console.log(`THE DISTILLERY is running at http://127.0.0.1:${port}`);
+  console.log(`Uncle Kev's Distillery is running at http://127.0.0.1:${port}`);
 });

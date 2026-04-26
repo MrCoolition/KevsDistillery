@@ -90,13 +90,13 @@ export class App {
   readonly model = discoveryModel;
   readonly ai = aiReadiness;
   readonly activeView = signal<ViewId>('imports');
-  readonly selectedItemId = signal<string>('OUT-001');
+  readonly selectedItemId = signal<string>('SRC-001');
   readonly searchTerm = signal('');
   readonly importSourceKind = signal<SourceKind>('excel');
-  readonly importSourceName = signal('Selected source set');
+  readonly importSourceName = signal('Uncle Kev source batch');
   readonly knownArtifactsText = signal('');
-  readonly targetOutputsText = signal('01_Executive_Decision_Brief.pdf\n02_Current_State_Architecture_Report.pdf\n03_Technical_Discovery_Workbook.xlsx\n05_Diagram_Pack\n07_Action_Backlog.csv');
-  readonly extractedText = signal('Choose files or a folder above. Extracted evidence will appear here before execution.');
+  readonly targetOutputsText = signal('01_Executive_Decision_Brief.pdf\n02_Current_State_Architecture_Report.pdf\n03_Technical_Discovery_Workbook.xlsx\n05_Diagram_Pack\n07_Action_Backlog.csv\n09_Metadata_Manifest.json');
+  readonly extractedText = signal('Choose files or a folder above. Extracted evidence will collect here before the still runs.');
   readonly apiHealth = signal<ApiHealth | null>(null);
   readonly apiError = signal('');
   readonly isSynthesizing = signal(false);
@@ -145,7 +145,7 @@ export class App {
     {
       kind: 'mixed',
       label: 'Mixed Pack',
-      description: 'Multi-source evidence batches for full current-state synthesis.'
+      description: 'Multi-source evidence batches for a full still run.'
     }
   ];
 
@@ -214,7 +214,7 @@ export class App {
       return generatedArtifacts.map((artifact, index) => ({
         id: artifact.id || String(index + 1).padStart(2, '0'),
         name: artifact.name || 'Generated artifact',
-        audience: artifact.audience || 'Discovery team',
+        audience: artifact.audience || 'Distillery crew',
         purpose: artifact.purpose || artifact.type || 'Generated from canonical discovery model.',
         progress: artifact.status === 'final' ? 100 : 76,
         sourceModel: 'canonical graph' as const
@@ -250,7 +250,7 @@ export class App {
   readonly reportSections = computed(() => [
     {
       title: 'Executive Snapshot',
-      body: `${this.model.processName} supports ${this.model.businessFunction}. Execute a real source set to replace this starter state with evidence-backed scope, lineage, blockers, confidence, and actions.`
+      body: `${this.model.processName} supports ${this.model.businessFunction}. Fire a real source batch to replace this starter state with evidence-backed scope, lineage, blockers, confidence, and actions.`
     },
     {
       title: 'Current-State Narrative',
@@ -258,7 +258,7 @@ export class App {
     },
     {
       title: 'Lineage and Controls',
-      body: `${this.model.relationships.length} starter node-edge relationships connect source selection, canonical graph generation, and artifact output. Executed runs expand this into real lineage.`
+      body: `${this.model.relationships.length} starter node-edge relationships connect the mash bill, proof graph, and bottled outputs. Still runs expand this into real lineage.`
     },
     {
       title: 'Remediation Backlog',
@@ -320,12 +320,12 @@ export class App {
 
   async runSynthesis(): Promise<void> {
     if (!this.extractedText().trim()) {
-      this.synthesisError.set('No evidence payload is staged. Choose files or paste evidence first.');
+      this.synthesisError.set('No evidence payload is staged. Choose files or paste evidence before firing the still.');
       return;
     }
 
     if (this.stagedSources().length > 0) {
-      const confirmed = window.confirm('Execute Distillery synthesis? This sends extracted evidence from the selected sources to your configured backend and OpenAI model.');
+      const confirmed = window.confirm('Fire Uncle Kev\'s still? This sends extracted evidence from the selected sources to your configured backend and OpenAI model.');
       if (!confirmed) {
         return;
       }
@@ -378,7 +378,7 @@ export class App {
       this.stagedSources.set([...sources]);
     }
 
-    this.importSourceName.set(files.length === 1 ? files[0].name : `${files.length} source files`);
+    this.importSourceName.set(files.length === 1 ? files[0].name : `${files.length} source files in the mash bill`);
     this.knownArtifactsText.set(sources.map((source) => source.path).join('\n'));
     this.extractedText.set(this.buildEvidencePayload(sources));
     this.isExtractingSources.set(false);

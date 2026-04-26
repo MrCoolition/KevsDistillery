@@ -17,10 +17,10 @@
   align-items: center;
   gap: 14px;
   padding: 10px;
-  border: 1px solid rgba(17, 17, 17, 0.11);
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(247, 247, 244, 0.88);
-  box-shadow: 0 12px 36px rgba(17, 17, 17, 0.08);
+  background: rgba(11, 8, 6, 0.82);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.42);
   backdrop-filter: blur(18px);
 }
 
@@ -35,14 +35,20 @@
 
 .brand-mark {
   display: grid;
-  width: 44px;
-  height: 44px;
+  width: 52px;
+  height: 52px;
   place-items: center;
-  border-radius: 7px;
-  background: var(--ink);
-  color: var(--paper);
-  font-size: 13px;
-  font-weight: 850;
+  overflow: hidden;
+  border: 1px solid rgba(216, 139, 53, 0.56);
+  border-radius: 50%;
+  background: #080706;
+  box-shadow: 0 0 26px rgba(216, 139, 53, 0.28);
+}
+
+.brand-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .brand strong,
@@ -71,7 +77,7 @@
   padding: 4px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: var(--panel);
+  background: rgba(255, 246, 230, 0.045);
 }
 
 .nav-tabs button,
@@ -95,8 +101,9 @@
 }
 
 .nav-tabs button.active {
-  background: var(--ink);
-  color: var(--paper);
+  background: linear-gradient(135deg, rgba(216, 139, 53, 0.95), rgba(111, 54, 18, 0.96));
+  color: #fff6e6;
+  box-shadow: inset 0 0 0 1px rgba(255, 246, 230, 0.18);
 }
 
 .top-actions {
@@ -117,7 +124,8 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: var(--panel);
+  border: 1px solid var(--line);
+  background: rgba(255, 246, 230, 0.06);
 }
 
 .icon-action span {
@@ -126,13 +134,15 @@
   height: 20px;
   place-items: center;
   border-radius: 50%;
-  background: var(--mint-2);
-  color: var(--mint);
+  background: var(--amber-2);
+  color: var(--amber);
 }
 
 .primary-action {
-  background: var(--mint);
-  color: white;
+  border: 1px solid rgba(255, 246, 230, 0.13);
+  background: linear-gradient(135deg, #d88b35, #7a3518);
+  color: #fff6e6;
+  box-shadow: 0 14px 34px rgba(216, 139, 53, 0.18);
 }
 
 .top-actions button:disabled,
@@ -155,12 +165,33 @@
   flex-direction: column;
   justify-content: flex-end;
   padding: 28px;
-  border: 1px solid rgba(17, 17, 17, 0.12);
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--line);
   border-radius: 8px;
   background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(239, 239, 234, 0.84)),
-    repeating-linear-gradient(135deg, rgba(40, 85, 199, 0.08) 0 1px, transparent 1px 18px);
+    linear-gradient(90deg, rgba(8, 7, 6, 0.58), rgba(8, 7, 6, 0.94) 54%, rgba(8, 7, 6, 0.74)),
+    url("/assets/uncle-kevs-distillery.png");
+  background-position: right 24px center;
+  background-repeat: no-repeat;
+  background-size: min(44vw, 540px);
   box-shadow: var(--shadow);
+}
+
+.hero-copy::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(135deg, rgba(216, 139, 53, 0.2), transparent 38%),
+    repeating-linear-gradient(135deg, rgba(216, 139, 53, 0.09) 0 1px, transparent 1px 16px);
+  pointer-events: none;
+}
+
+.hero-copy > * {
+  position: relative;
+  max-width: 760px;
+  z-index: 1;
 }
 
 .eyebrow,
@@ -179,6 +210,7 @@
   margin: 12px 0;
   font-size: 76px;
   line-height: 0.92;
+  text-shadow: 0 0 34px rgba(216, 139, 53, 0.22);
 }
 
 .hero-text {
@@ -202,7 +234,7 @@
 .evidence-pill {
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.74);
+  background: rgba(255, 246, 230, 0.08);
   color: var(--ink-2);
   font-size: 12px;
   font-weight: 760;
@@ -219,17 +251,19 @@
   gap: 18px;
   min-height: 360px;
   padding: 24px;
-  border: 1px solid rgba(17, 17, 17, 0.12);
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: #151515;
-  color: var(--paper);
+  background:
+    linear-gradient(135deg, rgba(216, 139, 53, 0.18), transparent 36%),
+    #120d0a;
+  color: var(--ink);
   box-shadow: var(--shadow);
 }
 
 .ai-panel strong {
   display: block;
   margin-top: 8px;
-  color: white;
+  color: var(--ink);
   font-size: 36px;
 }
 
@@ -249,7 +283,7 @@
 .ai-steps span {
   border-color: rgba(255, 255, 255, 0.18);
   background: rgba(255, 255, 255, 0.08);
-  color: var(--paper);
+  color: var(--ink);
   padding: 8px 10px;
 }
 
@@ -278,9 +312,10 @@
 .risk-table,
 .artifact-card,
 .backlog-list article {
-  border: 1px solid rgba(17, 17, 17, 0.12);
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.86);
+  background: var(--panel);
+  box-shadow: inset 0 1px 0 rgba(255, 246, 230, 0.04);
 }
 
 .metric-grid article {
@@ -459,9 +494,11 @@ meter {
 }
 
 .source-type-grid button.selected {
-  border-color: var(--ink);
-  background: #151515;
-  color: var(--paper);
+  border-color: var(--amber);
+  background:
+    linear-gradient(135deg, rgba(216, 139, 53, 0.22), rgba(18, 13, 10, 0.96)),
+    #15100c;
+  color: var(--ink);
 }
 
 .source-type-grid span {
@@ -504,7 +541,7 @@ meter {
 
 .field-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 12px;
 }
 
@@ -522,7 +559,7 @@ meter {
   width: 100%;
   border: 1px solid var(--line-strong);
   border-radius: 7px;
-  background: #fbfbf8;
+  background: rgba(8, 7, 6, 0.7);
   color: var(--ink);
   padding: 12px;
   resize: vertical;
@@ -561,9 +598,9 @@ meter {
 
 .browse-panel,
 .staged-panel {
-  border: 1px solid rgba(17, 17, 17, 0.12);
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.86);
+  background: var(--panel);
   padding: 20px;
 }
 
@@ -756,7 +793,7 @@ meter {
 
 .pack-tree {
   background: #151515;
-  color: var(--paper);
+  color: var(--ink);
 }
 
 .pack-tree div {
@@ -766,7 +803,7 @@ meter {
 }
 
 .pack-tree strong {
-  color: white;
+  color: var(--ink);
 }
 
 .pack-tree span {
@@ -1065,9 +1102,9 @@ mark.high {
   border: 1px solid var(--line);
   border-radius: 8px;
   background:
-    linear-gradient(90deg, rgba(17, 17, 17, 0.04) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(17, 17, 17, 0.04) 1px, transparent 1px),
-    #fbfbf8;
+    linear-gradient(90deg, rgba(216, 139, 53, 0.06) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(216, 139, 53, 0.05) 1px, transparent 1px),
+    #0c0907;
   background-size: 28px 28px;
 }
 

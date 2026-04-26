@@ -1,5 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="The Distillery">
-  <rect width="64" height="64" rx="14" fill="#111111"/>
-  <path d="M19 16h26v7l-9 12v12l7 4v3H21v-3l7-4V35L19 23v-7Z" fill="#f6f6f2"/>
-  <path d="M25 22h14M28 35h8" stroke="#15a678" stroke-width="4" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Uncle Kev's Distillery">
+  <rect width="64" height="64" rx="14" fill="#080706"/>
+  <circle cx="32" cy="32" r="24" fill="#17110c" stroke="#d88b35" stroke-width="3"/>
+  <path d="M18 19h28v7L37 38v9l7 4v3H20v-3l7-4v-9L18 26v-7Z" fill="#fff6e6"/>
+  <path d="M24 25h16M28 38h8" stroke="#d88b35" stroke-width="4" stroke-linecap="round"/>
+  <path d="M21 51h22" stroke="#1fbf9c" stroke-width="3" stroke-linecap="round"/>
 </svg>

@@ -1,10 +1,12 @@
 <main class="app-shell">
   <header class="topbar">
-    <a class="brand" href="#top" aria-label="The Distillery home">
-      <span class="brand-mark">TD</span>
+    <a class="brand" href="#top" aria-label="Uncle Kev's Distillery home">
+      <span class="brand-mark">
+        <img src="/assets/uncle-kevs-distillery.png" alt="">
+      </span>
       <span>
-        <strong>THE DISTILLERY</strong>
-        <em>Canonical discovery command center</em>
+        <strong>UNCLE KEV'S DISTILLERY</strong>
+        <em>Proof-grade data discovery</em>
       </span>
     </a>
 
@@ -23,29 +25,29 @@
     <div class="top-actions">
       <button type="button" class="icon-action" aria-label="Run ingestion" (click)="selectView('imports')">
         <span aria-hidden="true">+</span>
-        Ingest
+        Mash In
       </button>
       <button type="button" class="primary-action" aria-label="Generate action pack" (click)="selectView('reports')">
-        Generate Pack
+        Bottle the Pack
       </button>
     </div>
   </header>
 
   <section class="hero-band" id="top">
     <div class="hero-copy">
-      <p class="eyebrow">Snowflake migration discovery</p>
+      <p class="eyebrow">Small batch lineage. Barrel strength evidence.</p>
       <h1>{{ model.processName }}</h1>
       <p class="hero-text">{{ model.recommendation }}</p>
       <div class="hero-meta" aria-label="Executive summary">
         <span>{{ model.businessFunction }}</span>
         <span>{{ model.criticalOutputs.length }} critical outputs</span>
-        <span>Evidence-first execution</span>
+        <span>Proofed for Snowflake migration</span>
       </div>
     </div>
 
     <aside class="ai-panel" aria-label="OpenAI orchestration">
       <div>
-        <span class="tiny-label">Synthesis engine</span>
+        <span class="tiny-label">Copper still</span>
         <strong>{{ ai.model }}</strong>
       </div>
       <p>{{ ai.serverBoundary }}</p>
@@ -59,12 +61,12 @@
 
   <section class="metric-grid" aria-label="Discovery health">
     <article>
-      <span>Risk</span>
+      <span>Heat</span>
       <strong>{{ model.overallRiskRating }}</strong>
-      <small>top risks priced</small>
+      <small>failure modes proofed</small>
     </article>
     <article>
-      <span>Evidence Complete</span>
+      <span>Proof Points</span>
       <strong>{{ completeItems() }}/{{ model.items.length }}</strong>
       <small>canonical items finished</small>
     </article>
@@ -74,7 +76,7 @@
       <small>weighted discovery signal</small>
     </article>
     <article>
-      <span>Pack Readiness</span>
+      <span>Bottle Run</span>
       <strong>{{ packageProgress() }}%</strong>
       <small>graph-generated artifacts</small>
     </article>
@@ -83,8 +85,8 @@
   <div class="workspace-grid">
     <aside class="left-rail" aria-label="Discovery intake">
       <section class="rail-section">
-        <p class="section-kicker">Scope</p>
-        <h2>Ingest sources</h2>
+        <p class="section-kicker">Mash bill</p>
+        <h2>Raw sources</h2>
         <div class="source-list">
           @for (source of model.systemsInScope; track source) {
             <button type="button">{{ source }}</button>
@@ -105,7 +107,7 @@
       </section>
 
       <section class="rail-section">
-        <p class="section-kicker">Extraction</p>
+        <p class="section-kicker">Still house</p>
         @for (capability of model.extractionCapabilities; track capability.source) {
           <div class="extractor">
             <div>
@@ -173,9 +175,9 @@
               <p class="section-kicker">Generated current state</p>
               <h2>Operating model narrative</h2>
               <p>
-                Choose files or a folder, stage the source set, then execute synthesis. THE DISTILLERY
-                extracts readable evidence, builds canonical nodes and edges, traces lineage, documents
-                controls and blockers, scores confidence, and generates the action pack from one model.
+                Choose files or a folder, load the mash bill, then fire the still. Uncle Kev's
+                Distillery extracts readable evidence, builds canonical nodes and edges, traces lineage,
+                documents controls and blockers, scores confidence, and bottles the action pack from one model.
               </p>
             </section>
           </section>
@@ -185,8 +187,8 @@
           <section class="import-workbench">
             <div class="import-head">
               <div>
-                <p class="section-kicker">Import forge</p>
-                <h2>Distill raw evidence into the canonical graph</h2>
+                <p class="section-kicker">Mash tun</p>
+                <h2>Turn raw sources into migration proof</h2>
               </div>
               <div class="status-cluster">
                 <span [class.ready]="apiHealth()?.openAIConfigured">OpenAI</span>
@@ -210,11 +212,11 @@
 
             <section class="source-browser">
               <article class="browse-panel">
-                <p class="section-kicker">Source browser</p>
+                <p class="section-kicker">Bottle room</p>
                 <h2>Browse real files or folders</h2>
                 <p>
-                  Choose source files from your machine. THE DISTILLERY extracts readable evidence locally,
-                  stages the source set, then sends extracted evidence to the server when you execute.
+                  Choose source files from your machine. Uncle Kev's Distillery extracts readable evidence locally,
+                  stages the source set, then sends extracted evidence to the copper still when you execute.
                 </p>
                 <div class="browse-actions">
                   <button type="button" class="primary-action" (click)="fileInput.click()">Choose Files</button>
@@ -269,7 +271,7 @@
               <article class="evidence-editor">
                 <div class="field-grid">
                   <label>
-                    Source name
+                    Batch name
                     <input
                       type="text"
                       [value]="importSourceName()"
@@ -308,7 +310,7 @@
 
                 <div class="import-actions">
                   <button type="button" class="primary-action" [disabled]="isSynthesizing()" (click)="runSynthesis()">
-                    {{ isSynthesizing() ? 'Distilling...' : 'Execute Distillery' }}
+                    {{ isSynthesizing() ? 'Distilling...' : 'Fire the Still' }}
                   </button>
                   <button type="button" class="icon-action" (click)="refreshProductionState()">
                     Refresh Status
@@ -322,7 +324,7 @@
 
               <aside class="import-side">
                 <section>
-                  <p class="section-kicker">Production status</p>
+                  <p class="section-kicker">Still status</p>
                   @if (apiHealth(); as health) {
                     <dl class="status-list">
                       <div>
@@ -339,7 +341,7 @@
                       </div>
                     </dl>
                     <button type="button" class="schema-button" (click)="applyNeonSchema()">
-                      Apply Neon Schema
+                      Prime Neon Barrels
                     </button>
                   } @else {
                     <p>{{ apiError() || 'Checking API health...' }}</p>
@@ -350,7 +352,7 @@
                 </section>
 
                 <section>
-                  <p class="section-kicker">Recent runs</p>
+                  <p class="section-kicker">Recent batches</p>
                   <div class="run-list">
                     @for (run of historicalRuns(); track run.id) {
                       <button type="button">
@@ -521,7 +523,7 @@
             <div class="report-head">
               <div>
                 <p class="section-kicker">Artifact cockpit</p>
-                <h2>Discovery Action Pack</h2>
+                  <h2>Uncle Kev's Proof Pack</h2>
                 <p>
                   A concise executive layer sits on top of the graph, lineage, controls,
                   business impact, and action backlog.
@@ -549,9 +551,9 @@
 
             <section class="report-output">
               <aside class="pack-tree">
-                <p class="section-kicker">Package tree</p>
+                <p class="section-kicker">Bottled output</p>
                 <div>
-                  <strong>/Discovery_Action_Pack/</strong>
+                  <strong>/Uncle_Kevs_Proof_Pack/</strong>
                   @for (artifact of liveArtifacts(); track artifact.id) {
                     <span>{{ artifact.name }}</span>
                   }

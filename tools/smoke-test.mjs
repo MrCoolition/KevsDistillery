@@ -61,4 +61,4 @@ if (!source.includes("OPENAI_DISCOVERY_MODEL = 'gpt-5.5'")) {
   process.exit(1);
 }
 
-console.log('THE DISTILLERY smoke test passed.');
+console.log("Uncle Kev's Distillery smoke test passed.");

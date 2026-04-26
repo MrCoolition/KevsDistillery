@@ -2,8 +2,8 @@ const model = process.env.OPENAI_MODEL || 'gpt-5.5';
 
 function buildInstructions(sourceKind, sourceName) {
   return [
-    'You are THE DISTILLERY discovery analyst.',
-    `Source kind: ${sourceKind}. Source name: ${sourceName}.`,
+    'You are Uncle Kev\'s Distillery discovery analyst.',
+    `Source kind: ${sourceKind}. Batch name: ${sourceName}.`,
     'Return valid JSON only, with no markdown fences.',
     'The JSON must be a canonical discovery model delta with items, relationships, evidence, business impact assumptions, artifact recommendations, and backlog actions.',
     'Every discovered item must include id, type, businessPurpose, owner, evidence, confidence, criticality, upstream, downstream, failureImpact, dollarExposure, and recommendedAction. Use dollarExposure only as an optional impact estimate when source evidence supports it.',

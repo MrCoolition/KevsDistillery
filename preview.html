@@ -3,27 +3,28 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>THE DISTILLERY Preview</title>
+    <title>Uncle Kev's Distillery</title>
+    <link rel="icon" type="image/png" href="/assets/uncle-kevs-distillery.png">
     <style>
       :root {
-        color-scheme: light;
-        --ink: #111111;
-        --ink-2: #343331;
-        --muted: #6d6a65;
-        --line: #dedbd4;
-        --line-strong: #bfb8ad;
-        --paper: #f7f7f4;
-        --panel: #ffffff;
-        --panel-2: #efefea;
-        --mint: #0b8f6a;
-        --mint-2: #d9f3ea;
-        --cobalt: #2855c7;
-        --cobalt-2: #e2e8ff;
-        --amber: #a86b13;
-        --amber-2: #fff0d2;
-        --rose: #b94055;
-        --rose-2: #ffe4e9;
-        --shadow: 0 22px 70px rgba(17, 17, 17, 0.12);
+        color-scheme: dark;
+        --ink: #fff6e6;
+        --ink-2: #d9c8ad;
+        --muted: #9b8d79;
+        --line: rgba(218, 155, 74, 0.22);
+        --line-strong: rgba(237, 177, 95, 0.45);
+        --paper: #080706;
+        --panel: rgba(24, 19, 15, 0.86);
+        --panel-2: rgba(43, 32, 23, 0.92);
+        --mint: #1fbf9c;
+        --mint-2: rgba(31, 191, 156, 0.14);
+        --cobalt: #7ea7ff;
+        --cobalt-2: rgba(126, 167, 255, 0.14);
+        --amber: #d88b35;
+        --amber-2: rgba(216, 139, 53, 0.17);
+        --rose: #d65b62;
+        --rose-2: rgba(214, 91, 98, 0.15);
+        --shadow: 0 28px 90px rgba(0, 0, 0, 0.48);
         font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       }
 
@@ -40,10 +41,12 @@
         min-height: 100vh;
         margin: 0;
         background:
-          linear-gradient(90deg, rgba(17, 17, 17, 0.035) 1px, transparent 1px),
-          linear-gradient(180deg, rgba(17, 17, 17, 0.03) 1px, transparent 1px),
+          radial-gradient(circle at 20% 0%, rgba(216, 139, 53, 0.22), transparent 34%),
+          radial-gradient(circle at 78% 8%, rgba(31, 191, 156, 0.13), transparent 28%),
+          linear-gradient(90deg, rgba(216, 139, 53, 0.06) 1px, transparent 1px),
+          linear-gradient(180deg, rgba(216, 139, 53, 0.04) 1px, transparent 1px),
           var(--paper);
-        background-size: 44px 44px;
+        background-size: auto, auto, 44px 44px, 44px 44px, auto;
         color: var(--ink);
       }
 
@@ -72,10 +75,10 @@
         align-items: center;
         gap: 14px;
         padding: 10px;
-        border: 1px solid rgba(17, 17, 17, 0.11);
+        border: 1px solid var(--line);
         border-radius: 8px;
-        background: rgba(247, 247, 244, 0.88);
-        box-shadow: 0 12px 36px rgba(17, 17, 17, 0.08);
+        background: rgba(11, 8, 6, 0.82);
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.42);
         backdrop-filter: blur(18px);
       }
 
@@ -88,14 +91,20 @@
 
       .brand-mark {
         display: grid;
-        width: 44px;
-        height: 44px;
+        width: 52px;
+        height: 52px;
         place-items: center;
-        border-radius: 7px;
-        background: var(--ink);
-        color: var(--paper);
-        font-size: 13px;
-        font-weight: 850;
+        overflow: hidden;
+        border: 1px solid rgba(216, 139, 53, 0.56);
+        border-radius: 50%;
+        background: #080706;
+        box-shadow: 0 0 26px rgba(216, 139, 53, 0.28);
+      }
+
+      .brand-mark img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
       }
 
       .brand strong,
@@ -124,7 +133,7 @@
         padding: 4px;
         border: 1px solid var(--line);
         border-radius: 8px;
-        background: var(--panel);
+        background: rgba(255, 246, 230, 0.045);
       }
 
       .nav-tabs button,
@@ -148,8 +157,9 @@
       }
 
       .nav-tabs button.active {
-        background: var(--ink);
-        color: var(--paper);
+        background: linear-gradient(135deg, rgba(216, 139, 53, 0.95), rgba(111, 54, 18, 0.96));
+        color: #fff6e6;
+        box-shadow: inset 0 0 0 1px rgba(255, 246, 230, 0.18);
       }
 
       .top-actions {
@@ -171,7 +181,8 @@
         display: inline-flex;
         align-items: center;
         gap: 8px;
-        background: var(--panel);
+        border: 1px solid var(--line);
+        background: rgba(255, 246, 230, 0.06);
       }
 
       .icon-action span {
@@ -180,14 +191,16 @@
         height: 20px;
         place-items: center;
         border-radius: 50%;
-        background: var(--mint-2);
-        color: var(--mint);
+        background: var(--amber-2);
+        color: var(--amber);
       }
 
       .primary-action {
         border: 0;
-        background: var(--mint);
-        color: white;
+        border: 1px solid rgba(255, 246, 230, 0.13);
+        background: linear-gradient(135deg, #d88b35, #7a3518);
+        color: #fff6e6;
+        box-shadow: 0 14px 34px rgba(216, 139, 53, 0.18);
       }
 
       .hero-band {
@@ -204,12 +217,33 @@
         flex-direction: column;
         justify-content: flex-end;
         padding: 28px;
-        border: 1px solid rgba(17, 17, 17, 0.12);
+        position: relative;
+        overflow: hidden;
+        border: 1px solid var(--line);
         border-radius: 8px;
         background:
-          linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(239, 239, 234, 0.84)),
-          repeating-linear-gradient(135deg, rgba(40, 85, 199, 0.08) 0 1px, transparent 1px 18px);
+          linear-gradient(90deg, rgba(8, 7, 6, 0.58), rgba(8, 7, 6, 0.94) 54%, rgba(8, 7, 6, 0.74)),
+          url("/assets/uncle-kevs-distillery.png");
+        background-position: right 24px center;
+        background-repeat: no-repeat;
+        background-size: min(44vw, 540px);
         box-shadow: var(--shadow);
+      }
+
+      .hero-copy::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(135deg, rgba(216, 139, 53, 0.2), transparent 38%),
+          repeating-linear-gradient(135deg, rgba(216, 139, 53, 0.09) 0 1px, transparent 1px 16px);
+        pointer-events: none;
+      }
+
+      .hero-copy > * {
+        position: relative;
+        max-width: 760px;
+        z-index: 1;
       }
 
       .eyebrow,
@@ -228,6 +262,7 @@
         margin: 12px 0;
         font-size: 76px;
         line-height: 0.92;
+        text-shadow: 0 0 34px rgba(216, 139, 53, 0.22);
       }
 
       .hero-text {
@@ -256,7 +291,7 @@
       .status-cluster span {
         border: 1px solid var(--line);
         border-radius: 999px;
-        background: rgba(255, 255, 255, 0.74);
+        background: rgba(255, 246, 230, 0.08);
         color: var(--ink-2);
         font-size: 12px;
         font-weight: 760;
@@ -281,17 +316,19 @@
         justify-content: space-between;
         gap: 18px;
         padding: 24px;
-        border: 1px solid rgba(17, 17, 17, 0.12);
+        border: 1px solid var(--line);
         border-radius: 8px;
-        background: #151515;
-        color: var(--paper);
+        background:
+          linear-gradient(135deg, rgba(216, 139, 53, 0.18), transparent 36%),
+          #120d0a;
+        color: var(--ink);
         box-shadow: var(--shadow);
       }
 
       .ai-panel strong {
         display: block;
         margin-top: 8px;
-        color: white;
+        color: var(--ink);
         font-size: 36px;
       }
 
@@ -305,7 +342,7 @@
       .ai-steps span {
         border-color: rgba(255, 255, 255, 0.18);
         background: rgba(255, 255, 255, 0.08);
-        color: var(--paper);
+        color: var(--ink);
       }
 
       .metric-grid {
@@ -325,9 +362,10 @@
       .pack-tree,
       .artifact-card,
       .backlog-list article {
-        border: 1px solid rgba(17, 17, 17, 0.12);
+        border: 1px solid var(--line);
         border-radius: 8px;
-        background: rgba(255, 255, 255, 0.86);
+        background: var(--panel);
+        box-shadow: inset 0 1px 0 rgba(255, 246, 230, 0.04);
       }
 
       .metric-grid article {
@@ -447,9 +485,11 @@
       }
 
       .source-type-grid button.selected {
-        border-color: var(--ink);
-        background: #151515;
-        color: var(--paper);
+        border-color: var(--amber);
+        background:
+          linear-gradient(135deg, rgba(216, 139, 53, 0.22), rgba(18, 13, 10, 0.96)),
+          #15100c;
+        color: var(--ink);
       }
 
       .source-type-grid span {
@@ -492,7 +532,7 @@
 
       .field-grid {
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: 1fr;
         gap: 12px;
       }
 
@@ -510,7 +550,7 @@
         width: 100%;
         border: 1px solid var(--line-strong);
         border-radius: 7px;
-        background: #fbfbf8;
+        background: rgba(8, 7, 6, 0.7);
         color: var(--ink);
         padding: 12px;
         resize: vertical;
@@ -545,9 +585,9 @@
 
       .browse-panel,
       .staged-panel {
-        border: 1px solid rgba(17, 17, 17, 0.12);
+        border: 1px solid var(--line);
         border-radius: 8px;
-        background: rgba(255, 255, 255, 0.86);
+        background: var(--panel);
         padding: 20px;
       }
 
@@ -721,7 +761,7 @@
 
       .pack-tree {
         background: #151515;
-        color: var(--paper);
+        color: var(--ink);
       }
 
       .pack-tree div {
@@ -731,7 +771,7 @@
       }
 
       .pack-tree strong {
-        color: white;
+        color: var(--ink);
       }
 
       .pack-tree span {
@@ -936,10 +976,10 @@
     <main class="app-shell">
       <header class="topbar">
         <div class="brand">
-          <span class="brand-mark">TD</span>
+          <span class="brand-mark"><img src="/assets/uncle-kevs-distillery.png" alt=""></span>
           <span>
-            <strong>THE DISTILLERY</strong>
-            <em>Canonical discovery command center</em>
+            <strong>UNCLE KEV'S DISTILLERY</strong>
+            <em>Proof-grade data discovery</em>
           </span>
         </div>
 
@@ -954,29 +994,29 @@
         </nav>
 
         <div class="top-actions">
-          <button class="icon-action jump" data-view="imports" type="button"><span>+</span> Ingest</button>
-          <button class="primary-action jump" data-view="reports" type="button">Generate Pack</button>
+          <button class="icon-action jump" data-view="imports" type="button"><span>+</span> Mash In</button>
+          <button class="primary-action jump" data-view="reports" type="button">Bottle the Pack</button>
         </div>
       </header>
 
       <section class="hero-band">
         <div class="hero-copy">
-          <p class="eyebrow">Universal data discovery</p>
-          <h1>Source Intelligence Workbench</h1>
-          <p class="hero-text">Browse real source files, extract evidence, build a canonical node-edge discovery model, generate lineage, documentation, controls, risks, and engineer-ready modernization actions.</p>
+          <p class="eyebrow">Small batch lineage. Barrel strength evidence.</p>
+          <h1>Uncle Kev's Distillery</h1>
+          <p class="hero-text">Drop messy databases, Excel files, docs, SQL, exports, and notes into the still. Uncle Kev distills the evidence into one proof-grade graph, then bottles lineage, documentation, diagrams, impact, and engineer-ready modernization actions.</p>
           <div class="hero-meta">
             <span>Databases, Excel, Access, Word, CSV, SQL, VBA, M</span>
             <span>Canonical graph-backed outputs</span>
-            <span>Evidence-first execution</span>
+            <span>Proofed for Snowflake migration</span>
           </div>
         </div>
 
         <aside class="ai-panel">
           <div>
-            <span class="tiny-label">Synthesis engine</span>
+            <span class="tiny-label">Copper still</span>
             <strong>gpt-5.5</strong>
           </div>
-          <p>All LLM calls run through a backend discovery agent. The Angular client receives normalized graph deltas only.</p>
+          <p>All LLM calls run through Uncle Kev's backend still. The browser receives normalized proof-graph deltas only.</p>
           <div class="ai-steps">
             <span>evidence-backed fields</span>
             <span>recursive lineage</span>
@@ -987,17 +1027,17 @@
       </section>
 
       <section class="metric-grid">
-        <article><span>Sources</span><strong>browse</strong><small>files and folders</small></article>
-        <article><span>Evidence</span><strong>extract</strong><small>text, workbook, docs</small></article>
-        <article><span>Model</span><strong>graph</strong><small>nodes, edges, actions</small></article>
-        <article><span>Outputs</span><strong>pack</strong><small>reports and backlog</small></article>
+        <article><span>Mash Bill</span><strong>load</strong><small>files and folders</small></article>
+        <article><span>Proof Points</span><strong>extract</strong><small>text, workbook, docs</small></article>
+        <article><span>Still Run</span><strong>graph</strong><small>nodes, edges, actions</small></article>
+        <article><span>Bottle Run</span><strong>pack</strong><small>reports and backlog</small></article>
       </section>
 
       <div class="workspace-grid">
         <aside class="left-rail">
           <section class="rail-section">
-            <p class="section-kicker">Scope</p>
-            <h2>Ingest sources</h2>
+            <p class="section-kicker">Mash bill</p>
+            <h2>Raw sources</h2>
             <div class="source-list">
               <button type="button">Access / ACCDB exports</button>
               <button type="button">Excel / XLSX / XLSM</button>
@@ -1040,8 +1080,8 @@
           <section class="view active" id="imports">
             <div class="import-head">
               <div>
-                <p class="section-kicker">Import forge</p>
-                <h2>Distill raw evidence into the canonical graph</h2>
+                <p class="section-kicker">Mash tun</p>
+                <h2>Turn raw sources into migration proof</h2>
               </div>
               <div class="status-cluster">
                 <span id="status-openai">OpenAI checking</span>
@@ -1060,9 +1100,9 @@
 
             <section class="source-browser">
               <article class="browse-panel">
-                <p class="section-kicker">Source browser</p>
+                <p class="section-kicker">Bottle room</p>
                 <h2>Browse real files or folders</h2>
-                <p>Choose source files from your machine. The app extracts readable evidence locally, stages the source set, then sends that extracted evidence to the server when you execute.</p>
+                <p>Choose source files from your machine. Uncle Kev's Distillery extracts readable evidence locally, stages the source set, then sends that extracted evidence to the copper still when you execute.</p>
                 <div class="browse-actions">
                   <button class="primary-action" id="choose-files" type="button">Choose Files</button>
                   <button class="icon-action" id="choose-folder" type="button"><span>+</span> Choose Folder</button>
@@ -1093,7 +1133,7 @@
             <section class="import-console">
               <article class="evidence-editor">
                 <div class="field-grid">
-                  <label>Source name <input id="source-name" value="Selected source set"></label>
+                  <label>Batch name <input id="source-name" value="Uncle Kev source batch"></label>
                 </div>
 
                 <label>Known artifacts <textarea id="known-artifacts" rows="4"></textarea></label>
@@ -1102,10 +1142,10 @@
 03_Technical_Discovery_Workbook.xlsx
 07_Action_Backlog.csv</textarea></label>
 
-                <label>Evidence payload <textarea id="evidence-payload" class="evidence-payload" rows="12">Choose files or a folder above. Extracted evidence will appear here before execution.</textarea></label>
+                <label>Evidence payload <textarea id="evidence-payload" class="evidence-payload" rows="12">Choose files or a folder above. Extracted evidence will collect here before the still runs.</textarea></label>
 
                 <div class="import-actions">
-                  <button class="primary-action" id="execute-distillery" type="button">Execute Distillery</button>
+                  <button class="primary-action" id="execute-distillery" type="button">Fire the Still</button>
                   <button class="icon-action" id="refresh-health" type="button"><span>r</span> Refresh Status</button>
                 </div>
                 <div class="run-result" id="run-result" hidden></div>
@@ -1113,19 +1153,19 @@
 
               <aside class="import-side">
                 <section>
-                  <p class="section-kicker">Production status</p>
+                  <p class="section-kicker">Still status</p>
                   <dl class="status-list">
                     <div><dt>Model</dt><dd>gpt-5.5</dd></div>
                     <div><dt>OpenAI</dt><dd id="health-openai">checking</dd></div>
                     <div><dt>Neon</dt><dd id="health-neon">checking</dd></div>
                   </dl>
-                  <button class="schema-button" id="apply-schema" type="button">Apply Neon Schema</button>
+                  <button class="schema-button" id="apply-schema" type="button">Prime Neon Barrels</button>
                 </section>
 
                 <section>
-                  <p class="section-kicker">Recent runs</p>
+                  <p class="section-kicker">Recent batches</p>
                   <div class="run-list">
-                    <button type="button"><strong>No runs yet</strong><span>execute a source set to create one</span></button>
+                    <button type="button"><strong>No batches yet</strong><span>fire the still to create one</span></button>
                   </div>
                 </section>
               </aside>
@@ -1160,8 +1200,8 @@
             <div class="report-head">
               <div>
                 <p class="section-kicker">Artifact cockpit</p>
-                <h2>Discovery Action Pack</h2>
-                <p>A concise executive layer sits on top of the canonical graph, lineage, controls, business impact, evidence, and action backlog.</p>
+                <h2>Uncle Kev's Proof Pack</h2>
+                <p>A concise executive layer sits on top of the proof graph, lineage, controls, business impact, evidence, and action backlog.</p>
               </div>
               <div class="report-scoreboard">
                 <span><strong>10</strong>Items</span>
@@ -1173,9 +1213,9 @@
 
             <section class="report-output">
               <aside class="pack-tree">
-                <p class="section-kicker">Package tree</p>
+                <p class="section-kicker">Bottled output</p>
                 <div>
-                  <strong>/Discovery_Action_Pack/</strong>
+                  <strong>/Uncle_Kevs_Proof_Pack/</strong>
                   <span>01_Executive_Decision_Brief.pdf</span>
                   <span>02_Current_State_Architecture_Report.pdf</span>
                   <span>03_Technical_Discovery_Workbook.xlsx</span>
@@ -1451,17 +1491,17 @@
         const evidence = document.getElementById('evidence-payload').value.trim();
         if (!evidence) {
           result.hidden = false;
-          result.textContent = 'No evidence payload is staged. Choose files or paste evidence first.';
+          result.textContent = 'No evidence payload is staged. Choose files or paste evidence before firing the still.';
           return;
         }
 
-        const confirmed = window.confirm('Execute Distillery synthesis? This sends the extracted evidence payload to your configured backend and OpenAI model.');
+        const confirmed = window.confirm("Fire Uncle Kev's still? This sends the extracted evidence payload to your configured backend and OpenAI model.");
         if (!confirmed) {
           return;
         }
 
         result.hidden = false;
-        result.textContent = 'Executing Distillery synthesis...';
+        result.textContent = "Firing Uncle Kev's still...";
         document.getElementById('execute-distillery').disabled = true;
 
         try {
@@ -1472,7 +1512,7 @@
             },
             body: JSON.stringify({
               sourceKind: selectedSourceKind(),
-              sourceName: document.getElementById('source-name').value.trim() || 'Selected source set',
+              sourceName: document.getElementById('source-name').value.trim() || 'Uncle Kev source batch',
               knownArtifacts: lines(document.getElementById('known-artifacts').value),
               targetOutputs: lines(document.getElementById('target-outputs').value),
               extractedText: evidence
@@ -1485,13 +1525,13 @@
 
           const counts = body.counts || {};
           result.textContent = [
-            `Run ${body.runId || 'completed'} executed with ${body.model || 'configured model'}.`,
+            `Batch ${body.runId || 'completed'} bottled with ${body.model || 'configured model'}.`,
             `Items: ${counts.items ?? 'n/a'}; Relationships: ${counts.relationships ?? 'n/a'}; Artifacts: ${counts.artifacts ?? 'n/a'}; Backlog: ${counts.backlog ?? 'n/a'}.`,
             body.stored ? 'Persisted to Neon.' : 'Neon is not configured locally, so this run was not persisted.'
           ].join('\n');
           showView('reports');
         } catch (error) {
-          result.textContent = error instanceof Error ? error.message : 'Distillery synthesis failed.';
+          result.textContent = error instanceof Error ? error.message : 'Still run failed.';
         } finally {
           document.getElementById('execute-distillery').disabled = false;
         }

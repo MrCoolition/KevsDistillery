@@ -1,6 +1,6 @@
 # LLM Orchestration
 
-THE DISTILLERY keeps LLM work behind a server boundary. The Angular client never receives an OpenAI API key. The browser sends extracted source text and metadata to an internal discovery endpoint; the endpoint calls the OpenAI Responses API with `gpt-5.5`; the client receives canonical graph deltas after validation.
+Uncle Kev's Distillery keeps LLM work behind a server boundary. The Angular client never receives an OpenAI API key. The browser sends extracted source text and metadata to an internal discovery endpoint; the endpoint calls the OpenAI Responses API with `gpt-5.5`; the client receives canonical proof-graph deltas after validation.
 
 ## Default Model
 
