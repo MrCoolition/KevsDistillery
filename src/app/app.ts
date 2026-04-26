@@ -35,6 +35,11 @@ interface ApiHealth {
 
 interface SynthesisResponse {
   ok: boolean;
+  queued?: boolean;
+  needsPayload?: boolean;
+  responseId?: string;
+  responseStatus?: string;
+  message?: string;
   runId?: string;
   stored?: boolean;
   persistenceError?: string | null;
@@ -179,6 +184,7 @@ export class App {
   readonly apiHealth = signal<ApiHealth | null>(null);
   readonly apiError = signal('');
   readonly isSynthesizing = signal(false);
+  readonly analysisStatus = signal('');
   readonly synthesisResult = signal<SynthesisResponse | null>(null);
   readonly synthesisError = signal('');
   readonly packMessage = signal('');
@@ -342,7 +348,7 @@ export class App {
 
   readonly runStatus = computed(() => {
     if (this.isSynthesizing()) {
-      return 'Running gpt-5.5 against the staged evidence now. The still is working.';
+      return this.analysisStatus() || 'Starting gpt-5.5 background analysis against the staged evidence now.';
     }
 
     const result = this.synthesisResult();
@@ -477,27 +483,34 @@ export class App {
     this.packError.set('');
     this.packMessage.set('');
     this.clearDownloadUrl();
+    this.analysisStatus.set('Starting OpenAI background analysis.');
     this.synthesisResult.set(null);
 
     try {
+      const payload = {
+        sourceKind: this.importSourceKind(),
+        sourceName: this.importSourceName(),
+        knownArtifacts: this.knownArtifacts(),
+        targetOutputs: this.targetOutputs(),
+        extractedText: this.extractedText()
+      };
       const response = await fetch('/api/discovery/synthesize', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          sourceKind: this.importSourceKind(),
-          sourceName: this.importSourceName(),
-          knownArtifacts: this.knownArtifacts(),
-          targetOutputs: this.targetOutputs(),
-          extractedText: this.extractedText()
-        })
+        body: JSON.stringify(payload)
       });
       const body = await this.readApiJson(response, 'Synthesis failed.');
       if (!response.ok) {
         throw new Error(body.error || 'Synthesis failed.');
       }
-      this.synthesisResult.set(body);
+
+      const completed = body.queued && body.responseId
+        ? await this.pollSynthesis(body.responseId, payload)
+        : body;
+
+      this.synthesisResult.set(completed);
       this.activeView.set('reports');
       await this.loadRuns();
       return true;
@@ -506,7 +519,63 @@ export class App {
       return false;
     } finally {
       this.isSynthesizing.set(false);
+      this.analysisStatus.set('');
     }
+  }
+
+  private async pollSynthesis(responseId: string, payload: Record<string, unknown>): Promise<SynthesisResponse> {
+    const maxAttempts = 120;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      this.analysisStatus.set(`OpenAI background analysis ${attempt === 1 ? 'started' : 'still running'} (${attempt}/${maxAttempts}).`);
+      await this.delay(3000);
+
+      const response = await fetch('/api/discovery/status', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          responseId
+        })
+      });
+      const body = await this.readApiJson(response, 'Could not check synthesis status.');
+      if (response.status === 202 || body.queued) {
+        this.analysisStatus.set(`OpenAI status: ${body.responseStatus || 'in progress'}. Uncle Kev is still distilling.`);
+        continue;
+      }
+      if (!response.ok) {
+        throw new Error(body.error || 'Could not check synthesis status.');
+      }
+      if (body.needsPayload) {
+        this.analysisStatus.set('OpenAI finished. Persisting the canonical model to Neon.');
+        return this.completeSynthesis(responseId, payload);
+      }
+      return body;
+    }
+
+    throw new Error('OpenAI analysis is still running. Refresh status and try again in a minute.');
+  }
+
+  private async completeSynthesis(responseId: string, payload: Record<string, unknown>): Promise<SynthesisResponse> {
+    const response = await fetch('/api/discovery/status', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        responseId,
+        ...payload
+      })
+    });
+    const body = await this.readApiJson(response, 'Could not persist completed synthesis.');
+    if (!response.ok || body.queued || body.needsPayload) {
+      throw new Error(body.error || 'Could not persist completed synthesis.');
+    }
+    return body;
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
   }
 
   async generateActionPack(): Promise<void> {

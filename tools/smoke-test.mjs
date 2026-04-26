@@ -12,6 +12,7 @@ const requiredFiles = [
   'src/app/sample-discovery.ts',
   'api/health.js',
   'api/admin/migrate.js',
+  'api/discovery/status.js',
   'api/discovery/synthesize.js',
   'api/_lib/db.js',
   'database/schema.sql',

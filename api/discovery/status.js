@@ -1,6 +1,6 @@
 const { saveDiscoveryRun } = require('../_lib/db');
 const { handleOptions, readJson, requireMethod, sendJson } = require('../_lib/http');
-const { startBackgroundSynthesis } = require('../_lib/openai');
+const { retrieveBackgroundSynthesis } = require('../_lib/openai');
 
 module.exports = async function handler(request, response) {
   if (handleOptions(request, response)) {
@@ -13,16 +13,17 @@ module.exports = async function handler(request, response) {
 
   try {
     const payload = await readJson(request);
-    const { sourceKind, sourceName, extractedText } = payload;
+    const { responseId, sourceKind, sourceName, extractedText } = payload;
 
-    if (!sourceKind || !sourceName || !extractedText) {
+    if (!responseId) {
       sendJson(response, 400, {
-        error: 'sourceKind, sourceName, and extractedText are required.'
+        ok: false,
+        error: 'responseId is required.'
       });
       return;
     }
 
-    const synthesis = await startBackgroundSynthesis(payload);
+    const synthesis = await retrieveBackgroundSynthesis(responseId);
     if (synthesis.pending) {
       sendJson(response, 202, {
         ok: true,
@@ -30,15 +31,32 @@ module.exports = async function handler(request, response) {
         responseId: synthesis.responseId,
         responseStatus: synthesis.responseStatus,
         model: synthesis.model,
-        message: 'OpenAI background analysis started. Poll /api/discovery/status for completion.'
+        message: `OpenAI analysis is ${synthesis.responseStatus}.`
+      });
+      return;
+    }
+
+    if (!sourceKind || !sourceName || !extractedText) {
+      sendJson(response, 200, {
+        ok: true,
+        queued: false,
+        needsPayload: true,
+        responseId: synthesis.responseId,
+        responseStatus: synthesis.responseStatus,
+        model: synthesis.model,
+        message: 'OpenAI analysis is complete. Send the source payload once to persist the run.',
+        outputText: synthesis.outputText,
+        canonicalDelta: synthesis.canonicalDelta
       });
       return;
     }
 
     const persistence = await saveDiscoveryRun(payload, synthesis);
-
     sendJson(response, 200, {
       ok: true,
+      queued: false,
+      responseId: synthesis.responseId,
+      responseStatus: synthesis.responseStatus,
       runId: persistence.runId,
       stored: persistence.stored,
       persistenceError: persistence.persistenceError || null,
@@ -51,7 +69,7 @@ module.exports = async function handler(request, response) {
   } catch (error) {
     sendJson(response, error.statusCode || 500, {
       ok: false,
-      error: error instanceof Error ? error.message : 'Discovery synthesis failed.',
+      error: error instanceof Error ? error.message : 'Could not check OpenAI synthesis status.',
       detail: error.detail || null
     });
   }
