@@ -1,10 +1,12 @@
+const { createHash } = require('node:crypto');
+
 const model = process.env.OPENAI_MODEL || 'gpt-5.5';
 const reasoningEffort = process.env.OPENAI_REASONING_EFFORT || 'high';
 const responseVerbosity = process.env.OPENAI_VERBOSITY || 'high';
 const OPENAI_TIMEOUT_MS = Number(process.env.OPENAI_TIMEOUT_MS || 59000);
 const OPENAI_START_TIMEOUT_MS = Number(process.env.OPENAI_START_TIMEOUT_MS || 25000);
-const OPENAI_MAX_OUTPUT_TOKENS = Number(process.env.OPENAI_MAX_OUTPUT_TOKENS || 14000);
-const OPENAI_SPECIALIST_OUTPUT_TOKENS = Number(process.env.OPENAI_SPECIALIST_OUTPUT_TOKENS || 11000);
+const OPENAI_MAX_OUTPUT_TOKENS = Number(process.env.OPENAI_MAX_OUTPUT_TOKENS || 12000);
+const OPENAI_SPECIALIST_OUTPUT_TOKENS = Number(process.env.OPENAI_SPECIALIST_OUTPUT_TOKENS || 6500);
 const DISTILLERY_SINGLE_PASS = process.env.DISTILLERY_SINGLE_PASS === 'true';
 const PENDING_RESPONSE_STATUSES = new Set(['queued', 'in_progress']);
 
@@ -94,6 +96,8 @@ const SPECIALIST_PASSES = [
     key: 'canonical',
     title: 'Canonical Discovery Architect',
     maxOutputTokens: OPENAI_MAX_OUTPUT_TOKENS,
+    outputKeys: ['processName', 'businessFunction', 'recommendation', 'decisionRequired', 'systemsInScope', 'criticalOutputs', 'overallRiskRating', 'estimatedDollarExposure', 'executiveBrief', 'reportSections', 'items', 'relationships', 'artifacts', 'backlog', 'evidenceIndex', 'lineageNodes', 'lineageEdges', 'failureRisks', 'openQuestions'],
+    reportSectionFocus: REPORT_SECTION_TITLES,
     focus: [
       'Build the strongest possible canonical discovery model from all evidence.',
       'Identify every material source, object, process step, output, control, blocker, and engineering action that evidence supports.',
@@ -104,6 +108,14 @@ const SPECIALIST_PASSES = [
     key: 'documentation',
     title: 'Current-State Auto Documentation Lead',
     maxOutputTokens: OPENAI_SPECIALIST_OUTPUT_TOKENS,
+    outputKeys: ['processName', 'businessFunction', 'systemsInScope', 'criticalOutputs', 'reportSections', 'peopleRoles', 'processSteps', 'accessObjects', 'excelObjects', 'wordExtracts', 'evidenceIndex', 'openQuestions'],
+    reportSectionFocus: [
+      'Scope, Coverage, and Confidence',
+      'Business Mission of the Process',
+      'Current-State Operating Model',
+      'System and Artifact Landscape',
+      'Data Flow and Process Flow Summary'
+    ],
     focus: [
       'Generate auto-documentation of the current state from evidence, not generic commentary.',
       'Populate processSteps, peopleRoles, systemsInScope, artifacts, reportSections, and openQuestions.',
@@ -114,6 +126,11 @@ const SPECIALIST_PASSES = [
     key: 'lineage',
     title: 'Recursive Lineage Principal',
     maxOutputTokens: OPENAI_SPECIALIST_OUTPUT_TOKENS,
+    outputKeys: ['criticalOutputs', 'items', 'relationships', 'lineageNodes', 'lineageEdges', 'reportSections', 'evidenceIndex', 'openQuestions'],
+    reportSectionFocus: [
+      'Data Flow and Process Flow Summary',
+      'Recursive Lineage and Source-of-Truth Assessment'
+    ],
     focus: [
       'Trace every critical output upstream recursively until a terminal condition or explicit blocker is reached.',
       'Populate lineageNodes, lineageEdges, relationships, source-of-truth candidates, unresolved nodes, branch statuses, and confidence.',
@@ -124,6 +141,11 @@ const SPECIALIST_PASSES = [
     key: 'logic_controls',
     title: 'Logic, Controls, and Failure-Mode Examiner',
     maxOutputTokens: OPENAI_SPECIALIST_OUTPUT_TOKENS,
+    outputKeys: ['items', 'relationships', 'transformationsRules', 'controlsExceptions', 'dataQuality', 'securityAccess', 'scheduleSla', 'failureRisks', 'failureModes', 'reportSections', 'evidenceIndex', 'openQuestions'],
+    reportSectionFocus: [
+      'Transformations and Business Logic',
+      'Controls, Exceptions, and Failure Modes'
+    ],
     focus: [
       'Extract Access, Excel, Word, SQL, VBA, Power Query, formula, macro, manual override, and tribal-rule evidence.',
       'Populate transformationsRules, controlsExceptions, failureRisks, dataQuality, securityAccess, and scheduleSla.',
@@ -134,6 +156,13 @@ const SPECIALIST_PASSES = [
     key: 'impact_backlog',
     title: 'Business Exposure and Action Backlog Strategist',
     maxOutputTokens: OPENAI_SPECIALIST_OUTPUT_TOKENS,
+    outputKeys: ['overallRiskRating', 'estimatedDollarExposure', 'financialModel', 'failureRisks', 'backlog', 'recommendation', 'decisionRequired', 'reportSections', 'evidenceIndex', 'openQuestions'],
+    reportSectionFocus: [
+      'Executive Snapshot',
+      'Financial Impact and Business Exposure',
+      'Recommendations and Action Plan',
+      'Open Questions and Decisions Needed'
+    ],
     focus: [
       'Build a high-level financial exposure model for no-run, late-run, wrong-data, partial-run, and unauditable-run scenarios.',
       'Populate financialModel, estimatedDollarExposure, failureRisks, backlog, recommendations, decisions, and acceptance criteria.',
@@ -144,6 +173,13 @@ const SPECIALIST_PASSES = [
     key: 'diagram_pack',
     title: 'Diagram and Output Package Architect',
     maxOutputTokens: OPENAI_SPECIALIST_OUTPUT_TOKENS,
+    outputKeys: ['artifacts', 'items', 'relationships', 'lineageNodes', 'lineageEdges', 'controlsExceptions', 'failureRisks', 'scheduleSla', 'reportSections', 'evidenceIndex'],
+    reportSectionFocus: [
+      'System and Artifact Landscape',
+      'Data Flow and Process Flow Summary',
+      'Recursive Lineage and Source-of-Truth Assessment',
+      'Controls, Exceptions, and Failure Modes'
+    ],
     focus: [
       'Prepare diagram-ready nodes and edges for executive value stream, system context, swimlane, data flow, recursive lineage, dependency, controls, failure, and timeline views.',
       'Ensure every visual node maps back to a canonical ID and includes owner, cadence, manual/automated, criticality, confidence, and dollar sensitivity when known.',
@@ -153,16 +189,7 @@ const SPECIALIST_PASSES = [
 ];
 
 function buildInstructions(sourceKind, sourceName, pass = null) {
-  const specialist = pass
-    ? [
-        '',
-        `Specialist pass: ${pass.title}.`,
-        'Specialist focus:',
-        ...pass.focus.map((line) => `- ${line}`),
-        'Return the full canonical JSON object even if this pass is strongest in only one area. Keep weak areas concise and explicit.'
-      ]
-    : [];
-
+  const isCanonical = !pass || pass.key === 'canonical';
   return [
     'You are Uncle Kev\'s Distillery principal data discovery analyst.',
     `Source kind: ${sourceKind}. Batch name: ${sourceName}.`,
@@ -172,9 +199,13 @@ function buildInstructions(sourceKind, sourceName, pass = null) {
     'If evidence is incomplete, create a blocker-backed finding with the exact smallest source artifact needed to finish the discovery.',
     'A finding is unfinished unless it has evidence, confidence, and next action.',
     'Use one canonical node-edge model to drive the report, auto-documentation, diagrams, recursive lineage, financial exposure, and remediation backlog.',
-    'Required top-level keys: processName, businessFunction, recommendation, decisionRequired, systemsInScope, criticalOutputs, overallRiskRating, estimatedDollarExposure, executiveBrief, reportSections, items, relationships, artifacts, backlog, evidenceIndex, lineageNodes, lineageEdges, failureRisks, openQuestions.',
+    isCanonical
+      ? 'Required top-level keys for this pass: processName, businessFunction, recommendation, decisionRequired, systemsInScope, criticalOutputs, overallRiskRating, estimatedDollarExposure, executiveBrief, reportSections, items, relationships, artifacts, backlog, evidenceIndex, lineageNodes, lineageEdges, failureRisks, openQuestions.'
+      : 'This is a focused specialist pass. Return only the requested outputKeys from the user payload plus any minimal IDs needed for traceability. Omit empty arrays and do not restate the full canonical object.',
     'Also include any supported technical arrays: peopleRoles, processSteps, accessObjects, excelObjects, wordExtracts, dataElements, transformationsRules, controlsExceptions, dataQuality, securityAccess, scheduleSla, failureModes, financialModel.',
-    'reportSections: exactly 12 sections with the title property using these exact titles in order: Executive Snapshot; Scope, Coverage, and Confidence; Business Mission of the Process; Current-State Operating Model; System and Artifact Landscape; Data Flow and Process Flow Summary; Transformations and Business Logic; Recursive Lineage and Source-of-Truth Assessment; Controls, Exceptions, and Failure Modes; Financial Impact and Business Exposure; Recommendations and Action Plan; Open Questions and Decisions Needed. Body should be concise but specific, usually 80 to 160 words. Include confidence and evidenceIds.',
+    isCanonical
+      ? 'reportSections: exactly 12 sections with the title property using these exact titles in order: Executive Snapshot; Scope, Coverage, and Confidence; Business Mission of the Process; Current-State Operating Model; System and Artifact Landscape; Data Flow and Process Flow Summary; Transformations and Business Logic; Recursive Lineage and Source-of-Truth Assessment; Controls, Exceptions, and Failure Modes; Financial Impact and Business Exposure; Recommendations and Action Plan; Open Questions and Decisions Needed. Body should be concise but specific, usually 60 to 130 words. Include confidence and evidenceIds.'
+      : 'reportSections: include only the reportSectionFocus titles from the user payload. Body should be concise but specific, usually 60 to 120 words. Include confidence and evidenceIds.',
     'items: include every material canonical item supported by evidence or required as a documented blocker. Each item requires id, type, name, businessPurpose, owner, evidence, confidence, criticality, upstream, downstream, failureImpact, dollarExposure, recommendedAction, status.',
     'recommendedAction requires mode, summary, owner, priority, acceptanceCriteria. dollarExposure requires low, base, high, assumptions. evidence requires id, type, location, description.',
     'relationships: include every material discovered or inferred edge with id, fromId, toId, type, automated, cadence, transformId, evidenceId, confidence, and status.',
@@ -186,10 +217,12 @@ function buildInstructions(sourceKind, sourceName, pass = null) {
     'estimatedDollarExposure must cover revenue at risk, gross margin at risk, cash timing impact, rework labor cost, and compliance/SLA/customer exposure. Include low/base/high estimates with assumptions. If pricing evidence is missing, use zero low/base/high and state exact business inputs needed.',
     'For non-transaction processes, use proxy value fields such as spend influenced, revenue influenced, inventory value managed, payroll affected, compliance exposure, decisions delayed, and executive reporting dependency.',
     'backlog actions must be ready to work: owner, priority, dependency, due date when inferable, linked item, mode, summary, and acceptanceCriteria.',
-    'artifacts must list all 9 Discovery_Action_Pack outputs with purpose, audience, and status: 01_Executive_Decision_Brief.pdf, 02_Current_State_Architecture_Report.pdf, 03_Technical_Discovery_Workbook.xlsx, 04_Auto_Documentation_Pack, 05_Diagram_Pack, 06_Financial_Impact_Model.xlsx, 07_Action_Backlog.csv, 08_Evidence_Archive, 09_Metadata_Manifest.json.',
+    isCanonical || pass?.key === 'diagram_pack'
+      ? 'artifacts must list all 9 Discovery_Action_Pack outputs with purpose, audience, and status: 01_Executive_Decision_Brief.pdf, 02_Current_State_Architecture_Report.pdf, 03_Technical_Discovery_Workbook.xlsx, 04_Auto_Documentation_Pack, 05_Diagram_Pack, 06_Financial_Impact_Model.xlsx, 07_Action_Backlog.csv, 08_Evidence_Archive, 09_Metadata_Manifest.json.'
+      : 'Do not list all 9 artifacts in this specialist pass unless directly relevant; the merge layer owns the final package artifact list.',
     'Every critical output must have current-state narrative, diagram coverage, recursive lineage, business logic extraction, financial exposure, and a clear action recommendation or blocker.',
-    'Do not use arbitrary low item caps. Be comprehensive within the response budget, deduplicate aggressively, and prefer evidence-backed depth over generic summaries.',
-    ...specialist
+    'Do not use arbitrary low item caps. Be comprehensive in your focused area, deduplicate aggressively, and prefer evidence-backed depth over generic summaries.',
+    'The user payload includes analysisPassTitle, specialistFocus, outputKeys, and reportSectionFocus. Obey those fields exactly to keep this pass deep and bounded.'
   ].join('\n');
 }
 
@@ -260,16 +293,31 @@ function buildInputPayload(payload, pass) {
   } = payload;
 
   return {
-    analysisPass: pass?.key || 'canonical',
-    analysisPassTitle: pass?.title || 'Canonical Discovery Architect',
     sourceKind,
     sourceName,
     knownArtifacts,
     targetOutputs,
     outputPackageStandard: REQUIRED_ARTIFACTS.map((artifact) => artifact.name),
     requiredReportSections: REPORT_SECTION_TITLES,
-    extractedText
+    extractedText,
+    analysisPass: pass?.key || 'canonical',
+    analysisPassTitle: pass?.title || 'Canonical Discovery Architect',
+    specialistFocus: pass?.focus || [],
+    outputKeys: pass?.outputKeys || [],
+    reportSectionFocus: pass?.reportSectionFocus || REPORT_SECTION_TITLES
   };
+}
+
+function promptCacheKey(payload) {
+  const hash = createHash('sha256')
+    .update(String(payload.sourceKind || 'mixed'))
+    .update('\n')
+    .update(String(payload.sourceName || 'source'))
+    .update('\n')
+    .update(String(payload.extractedText || ''))
+    .digest('hex')
+    .slice(0, 32);
+  return `distillery:${hash}`;
 }
 
 function buildRequestBody(payload, background = false, pass = SPECIALIST_PASSES[0]) {
@@ -284,6 +332,8 @@ function buildRequestBody(payload, background = false, pass = SPECIALIST_PASSES[
     max_output_tokens: pass?.maxOutputTokens || OPENAI_MAX_OUTPUT_TOKENS,
     store: true,
     background,
+    prompt_cache_key: promptCacheKey(payload),
+    prompt_cache_retention: '24h',
     text: textOptions(),
     input: [
       {
@@ -383,6 +433,28 @@ function responseToSynthesis(result, pass = null) {
     };
   }
 
+  if (result.status === 'incomplete') {
+    const outputText = extractOutputText(result);
+    const canonicalDelta = parseJsonOutput(outputText);
+    if (canonicalDelta && typeof canonicalDelta === 'object') {
+      return {
+        pending: false,
+        responseId: result.id,
+        responseStatus: result.status,
+        model,
+        passKey: pass?.key || 'canonical',
+        passTitle: pass?.title || 'Canonical Discovery Architect',
+        orchestration: pass ? 'specialist-pass' : 'single-pass',
+        fallbackReason: incompleteReason(result, pass),
+        outputText,
+        canonicalDelta,
+        raw: result
+      };
+    }
+
+    return incompletePassSynthesis(result, pass, outputText);
+  }
+
   if (result.status && result.status !== 'completed') {
     const error = new Error(result.error?.message || `The Distillery run ended with status ${result.status}.`);
     error.statusCode = 502;
@@ -409,6 +481,93 @@ function responseToSynthesis(result, pass = null) {
     orchestration: pass ? 'specialist-pass' : 'single-pass',
     outputText,
     canonicalDelta,
+    raw: result
+  };
+}
+
+function incompleteReason(result, pass = null) {
+  const reason = result.incomplete_details?.reason || result.incomplete_details?.type || 'response_limit';
+  const title = pass?.title || 'Distillery pass';
+  return `${title} ended incomplete (${reason}) but returned parseable discovery JSON. The output was preserved and merged with the remaining specialist passes.`;
+}
+
+function incompletePassSynthesis(result, pass = null, outputText = '') {
+  const passKey = pass?.key || 'canonical';
+  const passTitle = pass?.title || 'Distillery pass';
+  const reason = result.incomplete_details?.reason || result.incomplete_details?.type || 'response_limit';
+  const evidenceId = `EV-${passKey.toUpperCase()}-INCOMPLETE`;
+  const actionId = `ACT-${passKey.toUpperCase()}-RERUN`;
+  const fallbackReason = `${passTitle} ended incomplete (${reason}) before it returned valid JSON. The Distillery preserved the run and created a blocker-backed action instead of failing the whole package.`;
+
+  return {
+    pending: false,
+    responseId: result.id,
+    responseStatus: 'incomplete',
+    model,
+    passKey,
+    passTitle,
+    orchestration: pass ? 'specialist-pass' : 'single-pass',
+    fallbackReason,
+    outputText: outputText || fallbackReason,
+    canonicalDelta: {
+      processName: 'Distillery discovery run',
+      businessFunction: 'Data discovery and migration readiness',
+      recommendation: 'Use the completed specialist passes and rerun the incomplete pass if more depth is needed.',
+      decisionRequired: 'Confirm whether to rerun the incomplete specialist pass or proceed with available evidence.',
+      systemsInScope: [],
+      criticalOutputs: [],
+      overallRiskRating: 'High',
+      estimatedDollarExposure: {},
+      executiveBrief: {},
+      reportSections: [],
+      items: [],
+      relationships: [],
+      artifacts: [],
+      backlog: [
+        {
+          actionId,
+          title: `Rerun ${passTitle}`,
+          mode: 'stabilize',
+          owner: 'Discovery owner',
+          priority: 'P0',
+          dependency: 'Focused evidence payload and bounded output keys',
+          acceptanceCriteria: `${passTitle} returns valid canonical JSON with evidence, confidence, and next actions.`,
+          linkedItemId: evidenceId,
+          summary: fallbackReason
+        }
+      ],
+      evidenceIndex: [
+        {
+          id: evidenceId,
+          type: 'distillery_run_status',
+          location: result.id || passKey,
+          description: fallbackReason,
+          relatedObject: passKey
+        }
+      ],
+      lineageNodes: [],
+      lineageEdges: [],
+      failureRisks: [
+        {
+          id: `RISK-${passKey.toUpperCase()}-INCOMPLETE`,
+          scenario: `${passTitle} did not complete`,
+          trigger: reason,
+          effect: 'The merged action pack may be shallower in this specialist area.',
+          detection: 'Distillery response status incomplete',
+          recovery: 'Rerun focused pass with narrower source evidence or exported metadata.',
+          impactedOutput: passTitle,
+          confidence: 100
+        }
+      ],
+      openQuestions: [
+        {
+          id: `Q-${passKey.toUpperCase()}-INCOMPLETE`,
+          question: `Should ${passTitle} be rerun with narrower evidence or native metadata exports?`,
+          owner: 'Discovery owner',
+          impactIfUnanswered: 'The Discovery Action Pack remains complete enough to use but contains a documented blocker for this specialist pass.'
+        }
+      ]
+    },
     raw: result
   };
 }
@@ -628,10 +787,17 @@ function mergeSpecialistSyntheses(syntheses) {
     passTitle: synthesis.passTitle,
     responseId: synthesis.responseId,
     responseStatus: synthesis.responseStatus,
+    fallbackReason: synthesis.fallbackReason || null,
     items: safeArray(synthesis.canonicalDelta.items).length,
     relationships: safeArray(synthesis.canonicalDelta.relationships).length,
     backlog: safeArray(synthesis.canonicalDelta.backlog).length
   }));
+  const fallbackReasons = completed
+    .map((synthesis) => synthesis.fallbackReason)
+    .filter(Boolean);
+  const mergedStatus = completed.some((synthesis) => synthesis.responseStatus === 'incomplete')
+    ? 'completed_with_blockers'
+    : 'completed';
 
   return {
     pending: false,
@@ -641,10 +807,11 @@ function mergeSpecialistSyntheses(syntheses) {
       responseId: synthesis.responseId,
       responseStatus: synthesis.responseStatus
     })),
-    responseStatus: 'completed',
+    responseStatus: mergedStatus,
     model,
     orchestration: 'specialist-pass',
     passCount: completed.length,
+    fallbackReason: fallbackReasons.join(' '),
     outputText: JSON.stringify({
       orchestration: 'specialist-pass',
       reasoningEffort,

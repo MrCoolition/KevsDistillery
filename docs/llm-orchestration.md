@@ -8,9 +8,10 @@ Uncle Kev's Distillery keeps LLM work behind a server boundary. The Angular clie
 - API surface: Responses API
 - Reasoning effort: `high` by default, overrideable with `OPENAI_REASONING_EFFORT`
 - Verbosity: `high` by default, overrideable with `OPENAI_VERBOSITY`
-- Core output budget: `14000` tokens by default
-- Specialist output budget: `11000` tokens per specialist pass by default
+- Core output budget: `12000` tokens by default
+- Specialist output budget: `6500` tokens per focused specialist pass by default
 - Transport: stored background Responses runs, polled through the app API
+- Cache hint: source payloads receive a stable prompt-cache key with 24-hour retention
 - Public label: `The Distillery`
 - Output: one merged canonical discovery model delta
 
@@ -25,9 +26,12 @@ Production synthesis runs six background passes and merges them deterministicall
 - Business Exposure and Action Backlog Strategist
 - Diagram and Output Package Architect
 
-Each pass returns the same canonical JSON contract. The merge layer deduplicates nodes, edges,
-evidence, actions, report sections, lineage, failure modes, technical registers, artifacts, and
-open questions into one Discovery Action Pack model.
+Each pass returns a focused slice of the same canonical JSON contract instead of repeating the
+whole universe. The merge layer deduplicates nodes, edges, evidence, actions, report sections,
+lineage, failure modes, technical registers, artifacts, and open questions into one Discovery
+Action Pack model. If a pass ends incomplete, the backend preserves any parseable JSON; otherwise
+it creates an explicit blocker action so the full package does not die because one specialist ran
+out of output budget.
 
 ## Required LLM Contract
 
