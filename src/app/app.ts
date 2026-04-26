@@ -216,6 +216,28 @@ interface DiagramScene {
   callouts: DiagramCallout[];
 }
 
+interface InlineGraphNode {
+  id: string;
+  label: string;
+  type: string;
+  tone: DiagramTone;
+  confidence: number | null;
+  x: number;
+  y: number;
+}
+
+interface InlineGraphEdge {
+  id: string;
+  label: string;
+  tone: DiagramTone;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  labelX: number;
+  labelY: number;
+}
+
 @Component({
   selector: 'td-root',
   standalone: true,
@@ -396,6 +418,68 @@ export class App {
       artifacts: result?.counts?.artifacts ?? result?.canonicalDelta?.artifacts?.length ?? this.model.artifacts.length,
       backlog: result?.counts?.backlog ?? result?.canonicalDelta?.backlog?.length ?? this.model.backlog.length
     };
+  });
+
+  readonly reportPreviewNodes = computed<InlineGraphNode[]>(() => {
+    const delta = this.synthesisResult()?.canonicalDelta;
+    const items = delta?.items?.length
+      ? this.records(delta.items)
+      : this.model.items.map((item) => ({ ...item }) as unknown as Record<string, unknown>);
+    const limited = items.slice(0, 10);
+    const columns = limited.length <= 6 ? 3 : 4;
+    const xStep = 100 / columns;
+    const rows = Math.max(1, Math.ceil(limited.length / columns));
+    const yStep = rows === 1 ? 0 : 56 / (rows - 1);
+
+    return limited.map((item, index) => {
+      const type = this.readString(item, ['type', 'node_type']) || 'object';
+      const column = index % columns;
+      const row = Math.floor(index / columns);
+      return {
+        id: this.readString(item, ['id', 'item_id', 'node_id']) || `N${index + 1}`,
+        label: this.readString(item, ['name', 'object_name', 'title']) || `Node ${index + 1}`,
+        type,
+        tone: this.toneForType(type),
+        confidence: this.readNumber(item, ['confidence']),
+        x: 6 + column * xStep,
+        y: rows === 1 ? 38 : 18 + row * yStep
+      };
+    });
+  });
+
+  readonly reportPreviewEdges = computed<InlineGraphEdge[]>(() => {
+    const nodes = this.reportPreviewNodes();
+    const nodeById = new Map(nodes.map((node) => [node.id, node]));
+    const delta = this.synthesisResult()?.canonicalDelta;
+    const relationships = delta?.relationships?.length
+      ? this.records(delta.relationships)
+      : this.model.relationships.map((relationship) => ({ ...relationship }) as unknown as Record<string, unknown>);
+    const explicitEdges = relationships
+      .map((relationship, index) => {
+        const from = this.readString(relationship, ['fromId', 'from_id', 'from']);
+        const to = this.readString(relationship, ['toId', 'to_id', 'to']);
+        const fromNode = nodeById.get(from);
+        const toNode = nodeById.get(to);
+        if (!fromNode || !toNode) {
+          return null;
+        }
+        return this.inlineGraphEdge(
+          this.readString(relationship, ['id', 'relationship_id']) || `REL-${index + 1}`,
+          fromNode,
+          toNode,
+          this.readString(relationship, ['type', 'edgeType', 'relationship_type']) || 'depends on',
+          'graph'
+        );
+      })
+      .filter((edge): edge is InlineGraphEdge => Boolean(edge));
+
+    if (explicitEdges.length) {
+      return explicitEdges.slice(0, 12);
+    }
+
+    return nodes.slice(0, -1).map((node, index) => {
+      return this.inlineGraphEdge(`AUTO-${index + 1}`, node, nodes[index + 1], 'feeds', index < 2 ? 'source' : 'graph');
+    });
   });
 
   readonly sourceStats = computed(() => {
@@ -843,6 +927,10 @@ export class App {
       .filter(Boolean);
   }
 
+  shouldVisualizeSection(title: string): boolean {
+    return /data flow|process flow|lineage|source-of-truth|system and artifact/i.test(title);
+  }
+
   itemById(id: string): DiscoveryItem | undefined {
     return this.model.items.find((item) => item.id === id);
   }
@@ -1109,6 +1197,7 @@ export class App {
     const deltaRecord = delta as Record<string, unknown>;
     const systems = this.listText(deltaRecord['systemsInScope'], this.knownArtifacts().join(', '));
     const criticalOutputs = this.listText(deltaRecord['criticalOutputs'], this.targetOutputs().join(', '));
+    const itemLabels = this.nodeLabelMap(items);
 
     return [
       {
@@ -1144,7 +1233,7 @@ export class App {
       {
         title: 'Data Flow and Process Flow Summary',
         body: relationships.length
-          ? relationships.slice(0, 4).map((relationship) => `${this.readString(relationship, ['fromId', 'from_id', 'from'])} to ${this.readString(relationship, ['toId', 'to_id', 'to'])}`).join('; ')
+          ? relationships.slice(0, 5).map((relationship) => this.relationshipDisplay(relationship, itemLabels)).join('\n')
           : 'Data flow requires additional source metadata before edges can be confirmed.',
         confidence: null,
         evidenceIds: []
@@ -2124,6 +2213,44 @@ export class App {
       neutral: { fill: '#1d1916', stroke: '#a68a68', soft: '#171311' }
     };
     return tones[tone];
+  }
+
+  private inlineGraphEdge(id: string, from: InlineGraphNode, to: InlineGraphNode, label: string, tone: DiagramTone): InlineGraphEdge {
+    const x1 = from.x + 8;
+    const y1 = from.y + 8;
+    const x2 = to.x + 8;
+    const y2 = to.y + 8;
+    return {
+      id,
+      label: this.cleanDisplayText(label),
+      tone,
+      x1,
+      y1,
+      x2,
+      y2,
+      labelX: (x1 + x2) / 2,
+      labelY: (y1 + y2) / 2
+    };
+  }
+
+  private nodeLabelMap(items: Record<string, unknown>[]): Map<string, string> {
+    const labels = new Map<string, string>();
+    items.forEach((item, index) => {
+      const id = this.readString(item, ['id', 'item_id', 'node_id']) || `N${index + 1}`;
+      const label = this.readString(item, ['name', 'object_name', 'title']) || id;
+      labels.set(id, label);
+    });
+    return labels;
+  }
+
+  private relationshipDisplay(relationship: Record<string, unknown>, labels: Map<string, string>): string {
+    const fromId = this.readString(relationship, ['fromId', 'from_id', 'from']);
+    const toId = this.readString(relationship, ['toId', 'to_id', 'to']);
+    const type = this.readString(relationship, ['type', 'edgeType', 'relationship_type']) || 'depends on';
+    const confidence = this.readString(relationship, ['confidence']);
+    const from = labels.get(fromId) || fromId || 'unresolved source';
+    const to = labels.get(toId) || toId || 'unresolved target';
+    return `${from} -> ${to} (${type}${confidence ? `, ${confidence}% confidence` : ''})`;
   }
 
   private mermaidId(value: string): string {
