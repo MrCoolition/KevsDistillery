@@ -30,7 +30,7 @@ export const DISCOVERY_AGENT_CONTRACT: DiscoveryAgentContract = {
     'evidence-backed canonical fields',
     'recursive lineage candidates',
     'business logic extraction',
-    'financial exposure assumptions',
+    'business impact assumptions',
     'actionable remediation backlog'
   ]
 };

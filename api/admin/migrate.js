@@ -1,12 +1,12 @@
 const { ensureSchema } = require('../_lib/db');
-const { handleOptions, requireAuth, requireMethod, sendJson } = require('../_lib/http');
+const { handleOptions, requireMethod, sendJson } = require('../_lib/http');
 
 module.exports = async function handler(request, response) {
   if (handleOptions(request, response)) {
     return;
   }
 
-  if (!requireMethod(request, response, 'POST') || !requireAuth(request, response)) {
+  if (!requireMethod(request, response, 'POST')) {
     return;
   }
 

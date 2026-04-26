@@ -1,5 +1,5 @@
 const { saveDiscoveryRun } = require('../_lib/db');
-const { handleOptions, readJson, requireAuth, requireMethod, sendJson } = require('../_lib/http');
+const { handleOptions, readJson, requireMethod, sendJson } = require('../_lib/http');
 const { synthesizeWithOpenAI } = require('../_lib/openai');
 
 module.exports = async function handler(request, response) {
@@ -7,7 +7,7 @@ module.exports = async function handler(request, response) {
     return;
   }
 
-  if (!requireMethod(request, response, 'POST') || !requireAuth(request, response)) {
+  if (!requireMethod(request, response, 'POST')) {
     return;
   }
 

@@ -23,7 +23,6 @@ module.exports = async function handler(request, response) {
     ok: true,
     model,
     openAIConfigured: Boolean(process.env.OPENAI_API_KEY),
-    authRequired: Boolean(process.env.DISTILLERY_ADMIN_TOKEN),
     database
   });
 };

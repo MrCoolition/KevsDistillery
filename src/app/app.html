@@ -39,7 +39,7 @@
       <div class="hero-meta" aria-label="Executive summary">
         <span>{{ model.businessFunction }}</span>
         <span>{{ model.criticalOutputs.length }} critical outputs</span>
-        <span>{{ totalExposure() }} base exposure</span>
+        <span>Evidence-first execution</span>
       </div>
     </div>
 
@@ -99,7 +99,7 @@
           <span>Confidence</span>
           <span>Next action</span>
           <span>Lineage</span>
-          <span>Dollar exposure</span>
+          <span>Impact estimate</span>
           <span>Owner</span>
         </div>
       </section>
@@ -136,13 +136,9 @@
                     <dd>{{ model.decisionRequired }}</dd>
                   </div>
                   <div>
-                    <dt>Exposure band</dt>
+                    <dt>Impact model</dt>
                     <dd>
-                      {{ formatFullCurrency(model.estimatedDollarExposure.low) }}
-                      /
-                      {{ formatFullCurrency(model.estimatedDollarExposure.base) }}
-                      /
-                      {{ formatFullCurrency(model.estimatedDollarExposure.high) }}
+                      Scenario-based after execution
                     </dd>
                   </div>
                 </dl>
@@ -154,7 +150,7 @@
                   <button type="button" class="risk-row">
                     <span>{{ risk.id }}</span>
                     <strong>{{ risk.scenario }}</strong>
-                    <em>{{ formatCurrency(risk.exposure.base) }}</em>
+                    <em>{{ risk.confidence }}% confidence</em>
                   </button>
                 }
               </article>
@@ -177,11 +173,9 @@
               <p class="section-kicker">Generated current state</p>
               <h2>Operating model narrative</h2>
               <p>
-                At 5:30 AM, ERP Billing exports daily invoice events to the shared drive. At 5:45 AM,
-                the Access refresh macro imports the CSV into CloseMart, executes saved query logic,
-                and feeds the revenue flash transformation. Finance Planning refreshes the macro-enabled
-                workbook for manual adjustments and margin bridge output. The controller runs a variance
-                check before the Daily Revenue Flash is released to leadership.
+                Choose files or a folder, stage the source set, then execute synthesis. THE DISTILLERY
+                extracts readable evidence, builds canonical nodes and edges, traces lineage, documents
+                controls and blockers, scores confidence, and generates the action pack from one model.
               </p>
             </section>
           </section>
@@ -197,7 +191,6 @@
               <div class="status-cluster">
                 <span [class.ready]="apiHealth()?.openAIConfigured">OpenAI</span>
                 <span [class.ready]="apiHealth()?.database?.ready">Neon</span>
-                <span [class.ready]="isAuthReady()">Auth</span>
               </div>
             </div>
 
@@ -283,15 +276,6 @@
                       (input)="importSourceName.set($any($event.target).value)"
                     >
                   </label>
-                  <label>
-                    Admin token
-                    <input
-                      type="password"
-                      placeholder="Only needed if configured"
-                      [value]="adminToken()"
-                      (input)="updateAdminToken($any($event.target).value)"
-                    >
-                  </label>
                 </div>
 
                 <label>
@@ -352,10 +336,6 @@
                       <div>
                         <dt>Neon</dt>
                         <dd>{{ health.database.ready ? 'schema ready' : 'not ready' }}</dd>
-                      </div>
-                      <div>
-                        <dt>Auth</dt>
-                        <dd>{{ health.authRequired ? 'token required' : 'open' }}</dd>
                       </div>
                     </dl>
                     <button type="button" class="schema-button" (click)="applyNeonSchema()">
@@ -500,36 +480,36 @@
           </section>
         }
 
-        @case ('financial') {
+        @case ('impact') {
           <section class="view-stack">
-            <div class="exposure-band">
+            <div class="impact-band">
               <div>
-                <span>Low</span>
-                <strong>{{ formatFullCurrency(model.estimatedDollarExposure.low) }}</strong>
+                <span>No run</span>
+                <strong>Availability</strong>
               </div>
               <div>
-                <span>Base</span>
-                <strong>{{ formatFullCurrency(model.estimatedDollarExposure.base) }}</strong>
+                <span>Wrong data</span>
+                <strong>Quality</strong>
               </div>
               <div>
-                <span>High</span>
-                <strong>{{ formatFullCurrency(model.estimatedDollarExposure.high) }}</strong>
+                <span>Unauditable</span>
+                <strong>Traceability</strong>
               </div>
             </div>
 
-            <section class="risk-table" aria-label="Financial scenarios">
+            <section class="risk-table" aria-label="Impact scenarios">
               <div class="table-head">
                 <span>Scenario</span>
                 <span>Output</span>
                 <span>Detection</span>
-                <span>Base exposure</span>
+                <span>Impact basis</span>
               </div>
               @for (risk of model.failureRisks; track risk.id) {
                 <article>
                   <strong>{{ risk.scenario }}</strong>
                   <span>{{ risk.impactedOutput }}</span>
                   <span>{{ risk.detection }}</span>
-                  <em>{{ formatFullCurrency(risk.exposure.base) }}</em>
+                  <em>{{ risk.exposure.assumptions }}</em>
                 </article>
               }
             </section>
@@ -544,7 +524,7 @@
                 <h2>Discovery Action Pack</h2>
                 <p>
                   A concise executive layer sits on top of the graph, lineage, controls,
-                  financial exposure, and action backlog.
+                  business impact, and action backlog.
                 </p>
               </div>
               <div class="report-scoreboard">

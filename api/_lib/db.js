@@ -160,20 +160,39 @@ function averageConfidence(items) {
 
 async function saveDiscoveryRun(requestPayload, synthesis) {
   const runId = randomUUID();
-  const stored = await ensureSchema();
-  if (!stored) {
-    return {
-      runId,
-      stored: false
-    };
-  }
-
-  const sql = getSql();
   const delta = synthesis.canonicalDelta || {};
   const items = Array.isArray(delta.items) ? delta.items : [];
   const relationships = Array.isArray(delta.relationships) ? delta.relationships : [];
   const artifacts = Array.isArray(delta.artifacts) ? delta.artifacts : [];
   const backlog = Array.isArray(delta.backlog) ? delta.backlog : [];
+  const counts = {
+    items: items.length,
+    relationships: relationships.length,
+    artifacts: artifacts.length,
+    backlog: backlog.length
+  };
+
+  let stored = false;
+  try {
+    stored = await ensureSchema();
+  } catch (error) {
+    return {
+      runId,
+      stored: false,
+      counts,
+      persistenceError: error instanceof Error ? error.message : 'Database persistence is unavailable.'
+    };
+  }
+
+  if (!stored) {
+    return {
+      runId,
+      stored: false,
+      counts
+    };
+  }
+
+  const sql = getSql();
 
   await sql`
     insert into discovery_runs (
@@ -332,12 +351,7 @@ async function saveDiscoveryRun(requestPayload, synthesis) {
   return {
     runId,
     stored: true,
-    counts: {
-      items: items.length,
-      relationships: relationships.length,
-      artifacts: artifacts.length,
-      backlog: backlog.length
-    }
+    counts
   };
 }
 

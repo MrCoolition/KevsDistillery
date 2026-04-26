@@ -10,12 +10,9 @@ Set these in the Vercel project settings:
 OPENAI_API_KEY=...
 OPENAI_MODEL=gpt-5.5
 DATABASE_URL=...
-DISTILLERY_ADMIN_TOKEN=...
 ```
 
 `DATABASE_URL`, `POSTGRES_URL`, or `NEON_DATABASE_URL` are accepted. The Neon Vercel integration usually provisions one of these automatically.
-
-`DISTILLERY_ADMIN_TOKEN` is optional, but recommended. When set, the browser must send it as a bearer token for discovery synthesis and run history.
 
 ## Neon Schema
 
@@ -29,7 +26,6 @@ Or call the deployed admin endpoint:
 
 ```text
 POST /api/admin/migrate
-Authorization: Bearer <DISTILLERY_ADMIN_TOKEN>
 ```
 
 The canonical tables are:

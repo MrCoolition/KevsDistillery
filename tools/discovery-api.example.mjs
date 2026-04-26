@@ -32,8 +32,8 @@ function buildInstructions(sourceKind, sourceName) {
     'You are THE DISTILLERY discovery analyst.',
     `Source kind: ${sourceKind}. Source name: ${sourceName}.`,
     'Return valid JSON only.',
-    'The JSON must describe a canonical discovery model delta with items, relationships, evidence, financial exposure, and backlog actions.',
-    'Every discovered item must include id, type, businessPurpose, owner, evidence, confidence, criticality, upstream, downstream, failureImpact, dollarExposure, and recommendedAction.',
+    'The JSON must describe a canonical discovery model delta with items, relationships, evidence, business impact assumptions, and backlog actions.',
+    'Every discovered item must include id, type, businessPurpose, owner, evidence, confidence, criticality, upstream, downstream, failureImpact, dollarExposure, and recommendedAction. Use dollarExposure only as an optional impact estimate when source evidence supports it.',
     'If a finding lacks evidence, confidence, or a next action, mark it unfinished and name the smallest source needed to finish it.',
     'Trace upstream recursively until a terminal condition is reached or a blocker is documented.'
   ].join('\n');

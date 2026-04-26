@@ -274,7 +274,7 @@
 .narrative-panel,
 .detail-panel,
 .lineage-side,
-.exposure-band div,
+.impact-band div,
 .risk-table,
 .artifact-card,
 .backlog-list article {
@@ -1146,25 +1146,25 @@ mark.high {
   font-weight: 760;
 }
 
-.exposure-band {
+.impact-band {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
 
-.exposure-band div {
+.impact-band div {
   min-height: 148px;
   padding: 22px;
 }
 
-.exposure-band span {
+.impact-band span {
   color: var(--muted);
   font-size: 12px;
   font-weight: 850;
   text-transform: uppercase;
 }
 
-.exposure-band strong {
+.impact-band strong {
   display: block;
   margin-top: 14px;
   font-size: 34px;
@@ -1350,7 +1350,7 @@ mark.high {
   .left-rail,
   .detail-grid,
   .graph-canvas,
-  .exposure-band,
+  .impact-band,
   .relationship-columns,
   .source-type-grid,
   .source-stats,

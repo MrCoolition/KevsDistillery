@@ -3,7 +3,7 @@ import { ChangeDetectionStrategy, Component, computed, signal } from '@angular/c
 import { aiReadiness, discoveryModel } from './sample-discovery';
 import { BacklogAction, Criticality, DiscoveryItem } from './discovery-model';
 
-type ViewId = 'command' | 'imports' | 'model' | 'lineage' | 'reports' | 'financial' | 'backlog';
+type ViewId = 'command' | 'imports' | 'model' | 'lineage' | 'reports' | 'impact' | 'backlog';
 type SourceKind = 'access' | 'excel' | 'word' | 'database' | 'interview' | 'mixed';
 
 interface NavItem {
@@ -21,7 +21,6 @@ interface ApiHealth {
   ok: boolean;
   model: string;
   openAIConfigured: boolean;
-  authRequired: boolean;
   database: {
     configured: boolean;
     ready: boolean;
@@ -90,21 +89,14 @@ interface StagedSource {
 export class App {
   readonly model = discoveryModel;
   readonly ai = aiReadiness;
-  readonly activeView = signal<ViewId>('command');
+  readonly activeView = signal<ViewId>('imports');
   readonly selectedItemId = signal<string>('OUT-001');
   readonly searchTerm = signal('');
   readonly importSourceKind = signal<SourceKind>('excel');
-  readonly importSourceName = signal('Revenue_Close_Model.xlsm');
-  readonly knownArtifactsText = signal('qry_RevenueFlash_Final\nRefresh_All\nRevenue_Close_Model.xlsm');
-  readonly targetOutputsText = signal('01_Executive_Decision_Brief.pdf\n03_Technical_Discovery_Workbook.xlsx\n07_Action_Backlog.csv');
-  readonly extractedText = signal([
-    'Source: Revenue_Close_Model.xlsm',
-    'Power Query: Revenue_Import reads BillingExport_Daily.csv from shared finance drive.',
-    'Formula block: MarginBridge!H12:H240 calculates recognized_margin = recognized_revenue - cogs_adjusted.',
-    'Manual override: Sheet Adjustments column F can override customer tier before close package export.',
-    'Control: Controller reviews variance greater than 3 percent before 7:00 AM distribution.'
-  ].join('\n'));
-  readonly adminToken = signal('');
+  readonly importSourceName = signal('Selected source set');
+  readonly knownArtifactsText = signal('');
+  readonly targetOutputsText = signal('01_Executive_Decision_Brief.pdf\n02_Current_State_Architecture_Report.pdf\n03_Technical_Discovery_Workbook.xlsx\n05_Diagram_Pack\n07_Action_Backlog.csv');
+  readonly extractedText = signal('Choose files or a folder above. Extracted evidence will appear here before execution.');
   readonly apiHealth = signal<ApiHealth | null>(null);
   readonly apiError = signal('');
   readonly isSynthesizing = signal(false);
@@ -120,7 +112,7 @@ export class App {
     { id: 'model', label: 'Canonical Model' },
     { id: 'lineage', label: 'Lineage' },
     { id: 'reports', label: 'Reports' },
-    { id: 'financial', label: 'Financial' },
+    { id: 'impact', label: 'Impact' },
     { id: 'backlog', label: 'Backlog' }
   ];
 
@@ -194,7 +186,7 @@ export class App {
     return Math.round(total / this.model.items.length);
   });
 
-  readonly totalExposure = computed(() => this.formatCurrency(this.model.estimatedDollarExposure.base));
+  readonly impactBasis = computed(() => this.model.estimatedDollarExposure.assumptions);
 
   readonly selectedUpstream = computed(() => {
     const item = this.selectedItem();
@@ -242,8 +234,6 @@ export class App {
     };
   });
 
-  readonly isAuthReady = computed(() => !this.apiHealth()?.authRequired || Boolean(this.adminToken()));
-
   readonly sourceStats = computed(() => {
     const sources = this.stagedSources();
     const bytes = sources.reduce((sum, source) => sum + source.size, 0);
@@ -260,7 +250,7 @@ export class App {
   readonly reportSections = computed(() => [
     {
       title: 'Executive Snapshot',
-      body: `${this.model.processName} supports ${this.model.businessFunction}. Current risk is ${this.model.overallRiskRating}, with ${this.totalExposure()} base exposure and ${this.model.criticalOutputs.length} critical outputs.`
+      body: `${this.model.processName} supports ${this.model.businessFunction}. Execute a real source set to replace this starter state with evidence-backed scope, lineage, blockers, confidence, and actions.`
     },
     {
       title: 'Current-State Narrative',
@@ -268,7 +258,7 @@ export class App {
     },
     {
       title: 'Lineage and Controls',
-      body: `${this.model.relationships.length} node-edge relationships connect systems, files, workbooks, queries, controls, and outputs. Each material branch carries confidence and blocker status.`
+      body: `${this.model.relationships.length} starter node-edge relationships connect source selection, canonical graph generation, and artifact output. Executed runs expand this into real lineage.`
     },
     {
       title: 'Remediation Backlog',
@@ -277,9 +267,6 @@ export class App {
   ]);
 
   constructor() {
-    if (typeof window !== 'undefined') {
-      this.adminToken.set(window.sessionStorage.getItem('DISTILLERY_ADMIN_TOKEN') || '');
-    }
     void this.refreshProductionState();
   }
 
@@ -297,17 +284,6 @@ export class App {
 
   updateImportSourceKind(value: string): void {
     this.importSourceKind.set(value as SourceKind);
-  }
-
-  updateAdminToken(value: string): void {
-    this.adminToken.set(value);
-    if (typeof window !== 'undefined') {
-      if (value) {
-        window.sessionStorage.setItem('DISTILLERY_ADMIN_TOKEN', value);
-      } else {
-        window.sessionStorage.removeItem('DISTILLERY_ADMIN_TOKEN');
-      }
-    }
   }
 
   async refreshProductionState(): Promise<void> {
@@ -331,9 +307,7 @@ export class App {
 
   async loadRuns(): Promise<void> {
     try {
-      const response = await fetch('/api/discovery/runs?limit=8', {
-        headers: this.authHeaders()
-      });
+      const response = await fetch('/api/discovery/runs?limit=8');
       const body = await response.json();
       if (!response.ok) {
         throw new Error(body.error || 'Could not load runs.');
@@ -364,8 +338,7 @@ export class App {
       const response = await fetch('/api/discovery/synthesize', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          ...this.authHeaders()
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           sourceKind: this.importSourceKind(),
@@ -426,8 +399,7 @@ export class App {
     try {
       this.apiError.set('');
       const response = await fetch('/api/admin/migrate', {
-        method: 'POST',
-        headers: this.authHeaders()
+        method: 'POST'
       });
       const body = await response.json();
       if (!response.ok) {
@@ -445,23 +417,6 @@ export class App {
 
   isFinished(item: DiscoveryItem): boolean {
     return item.evidence.length > 0 && item.confidence > 0 && item.recommendedAction.summary.length > 0;
-  }
-
-  formatCurrency(value: number): string {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      notation: 'compact',
-      maximumFractionDigits: 1
-    }).format(value);
-  }
-
-  formatFullCurrency(value: number): string {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      maximumFractionDigits: 0
-    }).format(value);
   }
 
   criticalityRank(criticality: Criticality): number {
@@ -494,11 +449,6 @@ export class App {
       .split(/\r?\n|,/)
       .map((line) => line.trim())
       .filter(Boolean);
-  }
-
-  private authHeaders(): Record<string, string> {
-    const token = this.adminToken().trim();
-    return token ? { Authorization: `Bearer ${token}` } : {};
   }
 
   private async extractFile(file: File): Promise<StagedSource> {

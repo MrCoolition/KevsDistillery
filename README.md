@@ -1,6 +1,6 @@
 # THE DISTILLERY
 
-THE DISTILLERY is an Angular 21 standalone app prototype for graph-backed data discovery. It models how a single canonical discovery model can drive executive reports, auto-documentation, diagrams, recursive lineage, financial exposure, and remediation backlog outputs for Snowflake migration teams using Fivetran, dbt, SQL, and Snowpark.
+THE DISTILLERY is an Angular 21 standalone app for graph-backed enterprise data discovery. It lets teams browse real source files and folders, extract evidence, build one canonical node-edge model, and generate executive reports, auto-documentation, diagrams, recursive lineage, business-impact analysis, and remediation backlog outputs for Snowflake migration teams using Fivetran, dbt, SQL, and Snowpark.
 
 ## Run
 
@@ -40,7 +40,7 @@ For Vercel and Neon production setup, see [docs/production.md](docs/production.m
 - Canonical discovery model with required evidence, confidence, criticality, impact, exposure, and next action fields.
 - Executive command surface for scope, coverage, confidence, risk, and decision readiness.
 - Recursive lineage graph with selected-node traceability.
-- Action Pack generation tracker covering briefs, reports, workbooks, auto-docs, diagrams, financial model, backlog, evidence archive, and metadata manifest.
-- Financial exposure model with low, base, and high estimates.
+- Action Pack generation tracker covering briefs, reports, workbooks, auto-docs, diagrams, impact model, backlog, evidence archive, and metadata manifest.
+- Business-impact model for availability, freshness, quality, auditability, recovery effort, and modernization priority.
 - Remediation backlog with acceptance criteria.
 - Server-side LLM orchestration contract for OpenAI `gpt-5.5` via the Responses API.

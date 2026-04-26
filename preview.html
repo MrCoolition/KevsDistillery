@@ -944,12 +944,12 @@
         </div>
 
         <nav class="nav-tabs" aria-label="Workspace sections">
-          <button class="tab active" data-view="command" type="button">Command</button>
-          <button class="tab" data-view="imports" type="button">Imports</button>
+          <button class="tab" data-view="command" type="button">Command</button>
+          <button class="tab active" data-view="imports" type="button">Imports</button>
           <button class="tab" data-view="model" type="button">Canonical Model</button>
           <button class="tab" data-view="lineage" type="button">Lineage</button>
           <button class="tab" data-view="reports" type="button">Reports</button>
-          <button class="tab" data-view="financial" type="button">Financial</button>
+          <button class="tab" data-view="impact" type="button">Impact</button>
           <button class="tab" data-view="backlog" type="button">Backlog</button>
         </nav>
 
@@ -961,13 +961,13 @@
 
       <section class="hero-band">
         <div class="hero-copy">
-          <p class="eyebrow">Snowflake migration discovery</p>
-          <h1>Finance Close Revenue Distillation</h1>
-          <p class="hero-text">Stabilize the current close path, migrate authoritative flows to Snowflake, rebuild transformations in dbt, and orchestrate recurring extracts through Fivetran with Snowpark validation hooks.</p>
+          <p class="eyebrow">Universal data discovery</p>
+          <h1>Source Intelligence Workbench</h1>
+          <p class="hero-text">Browse real source files, extract evidence, build a canonical node-edge discovery model, generate lineage, documentation, controls, risks, and engineer-ready modernization actions.</p>
           <div class="hero-meta">
-            <span>Finance operations and billing assurance</span>
-            <span>4 critical outputs</span>
-            <span>$1.9M base exposure</span>
+            <span>Databases, Excel, Access, Word, CSV, SQL, VBA, M</span>
+            <span>Canonical graph-backed outputs</span>
+            <span>Evidence-first execution</span>
           </div>
         </div>
 
@@ -980,17 +980,17 @@
           <div class="ai-steps">
             <span>evidence-backed fields</span>
             <span>recursive lineage</span>
-            <span>financial exposure</span>
+            <span>business impact</span>
             <span>action backlog</span>
           </div>
         </aside>
       </section>
 
       <section class="metric-grid">
-        <article><span>Risk</span><strong>high</strong><small>top risks priced</small></article>
-        <article><span>Evidence Complete</span><strong>10/10</strong><small>canonical items finished</small></article>
-        <article><span>Confidence</span><strong>84%</strong><small>weighted discovery signal</small></article>
-        <article><span>Pack Readiness</span><strong>82%</strong><small>graph-generated artifacts</small></article>
+        <article><span>Sources</span><strong>browse</strong><small>files and folders</small></article>
+        <article><span>Evidence</span><strong>extract</strong><small>text, workbook, docs</small></article>
+        <article><span>Model</span><strong>graph</strong><small>nodes, edges, actions</small></article>
+        <article><span>Outputs</span><strong>pack</strong><small>reports and backlog</small></article>
       </section>
 
       <div class="workspace-grid">
@@ -999,11 +999,11 @@
             <p class="section-kicker">Scope</p>
             <h2>Ingest sources</h2>
             <div class="source-list">
-              <button type="button">Access close mart</button>
-              <button type="button">Excel revenue model</button>
-              <button type="button">Shared drive extracts</button>
-              <button type="button">ERP billing export</button>
-              <button type="button">Finance close memo</button>
+              <button type="button">Access / ACCDB exports</button>
+              <button type="button">Excel / XLSX / XLSM</button>
+              <button type="button">CSV / TSV / flat files</button>
+              <button type="button">SQL / database extracts</button>
+              <button type="button">Word / process docs</button>
             </div>
           </section>
 
@@ -1014,49 +1014,48 @@
               <span>Confidence</span>
               <span>Next action</span>
               <span>Lineage</span>
-              <span>Dollar exposure</span>
+              <span>Impact estimate</span>
               <span>Owner</span>
             </div>
           </section>
         </aside>
 
         <section class="content-surface">
-          <section class="view active" id="command">
+          <section class="view" id="command">
             <div class="report-head">
               <div>
-                <p class="section-kicker">Executive snapshot</p>
-                <h2>Decision brief</h2>
-                <p>Approve migration wave 1 for billing, cash application, and close reporting dependencies; assign finance data owner for unresolved manual overrides.</p>
+                <p class="section-kicker">Discovery snapshot</p>
+                <h2>Canonical discovery run</h2>
+                <p>Select one or many real sources, extract evidence, execute synthesis, and produce the canonical model that drives reports, diagrams, lineage, controls, impact, and backlog.</p>
               </div>
               <div class="report-scoreboard">
-                <span><strong>$420K</strong>Low</span>
-                <span><strong>$1.9M</strong>Base</span>
-                <span><strong>$6.7M</strong>High</span>
-                <span><strong>P0</strong>Decision</span>
+                <span><strong>Files</strong>Browse</span>
+                <span><strong>Graph</strong>Build</span>
+                <span><strong>Pack</strong>Generate</span>
+                <span><strong>Ready</strong>Execute</span>
               </div>
             </div>
           </section>
 
-          <section class="view" id="imports">
+          <section class="view active" id="imports">
             <div class="import-head">
               <div>
                 <p class="section-kicker">Import forge</p>
                 <h2>Distill raw evidence into the canonical graph</h2>
               </div>
               <div class="status-cluster">
-                <span>OpenAI ready</span>
-                <span>Neon ready</span>
-                <span>Auth ready</span>
+                <span id="status-openai">OpenAI checking</span>
+                <span id="status-neon">Neon checking</span>
               </div>
             </div>
 
             <section class="source-type-grid">
-              <button class="selected" type="button"><span>Extractor</span><strong>Excel</strong><em>Formulas, hidden sheets, Power Query M, pivots, external links, VBA.</em></button>
-              <button type="button"><span>Extractor</span><strong>Access</strong><em>ACCDB metadata, saved SQL, linked tables, macros, VBA, forms, reports.</em></button>
-              <button type="button"><span>Extractor</span><strong>Word</strong><em>Process steps, controls, approvals, rules, exceptions, SLA language.</em></button>
-              <button type="button"><span>Extractor</span><strong>Database</strong><em>Schemas, tables, keys, indexes, row counts, profile evidence.</em></button>
-              <button type="button"><span>Extractor</span><strong>Interview</strong><em>Tribal rules, owners, recovery paths, manual workarounds.</em></button>
-              <button type="button"><span>Extractor</span><strong>Mixed Pack</strong><em>Multi-source evidence batches for full current-state synthesis.</em></button>
+              <button class="selected" data-kind="excel" type="button"><span>Extractor</span><strong>Excel</strong><em>Formulas, hidden sheets, Power Query M, pivots, external links, VBA.</em></button>
+              <button data-kind="access" type="button"><span>Extractor</span><strong>Access</strong><em>ACCDB metadata, saved SQL, linked tables, macros, VBA, forms, reports.</em></button>
+              <button data-kind="word" type="button"><span>Extractor</span><strong>Word</strong><em>Process steps, controls, approvals, rules, exceptions, SLA language.</em></button>
+              <button data-kind="database" type="button"><span>Extractor</span><strong>Database</strong><em>Schemas, tables, keys, indexes, row counts, profile evidence.</em></button>
+              <button data-kind="interview" type="button"><span>Extractor</span><strong>Interview</strong><em>Tribal rules, owners, recovery paths, manual workarounds.</em></button>
+              <button data-kind="mixed" type="button"><span>Extractor</span><strong>Mixed Pack</strong><em>Multi-source evidence batches for full current-state synthesis.</em></button>
             </section>
 
             <section class="source-browser">
@@ -1094,23 +1093,16 @@
             <section class="import-console">
               <article class="evidence-editor">
                 <div class="field-grid">
-                  <label>Source name <input id="source-name" value="Revenue_Close_Model.xlsm"></label>
-                  <label>Admin token <input id="admin-token" type="password" placeholder="Only needed if configured"></label>
+                  <label>Source name <input id="source-name" value="Selected source set"></label>
                 </div>
 
-                <label>Known artifacts <textarea id="known-artifacts" rows="4">qry_RevenueFlash_Final
-Refresh_All
-Revenue_Close_Model.xlsm</textarea></label>
+                <label>Known artifacts <textarea id="known-artifacts" rows="4"></textarea></label>
 
                 <label>Target outputs <textarea id="target-outputs" rows="4">01_Executive_Decision_Brief.pdf
 03_Technical_Discovery_Workbook.xlsx
 07_Action_Backlog.csv</textarea></label>
 
-                <label>Evidence payload <textarea id="evidence-payload" class="evidence-payload" rows="12">Source: Revenue_Close_Model.xlsm
-Power Query: Revenue_Import reads BillingExport_Daily.csv from shared finance drive.
-Formula block: MarginBridge!H12:H240 calculates recognized_margin = recognized_revenue - cogs_adjusted.
-Manual override: Sheet Adjustments column F can override customer tier before close package export.
-Control: Controller reviews variance greater than 3 percent before 7:00 AM distribution.</textarea></label>
+                <label>Evidence payload <textarea id="evidence-payload" class="evidence-payload" rows="12">Choose files or a folder above. Extracted evidence will appear here before execution.</textarea></label>
 
                 <div class="import-actions">
                   <button class="primary-action" id="execute-distillery" type="button">Execute Distillery</button>
@@ -1124,18 +1116,16 @@ Control: Controller reviews variance greater than 3 percent before 7:00 AM distr
                   <p class="section-kicker">Production status</p>
                   <dl class="status-list">
                     <div><dt>Model</dt><dd>gpt-5.5</dd></div>
-                    <div><dt>OpenAI</dt><dd>configured</dd></div>
-                    <div><dt>Neon</dt><dd>schema ready</dd></div>
-                    <div><dt>Auth</dt><dd>token required</dd></div>
+                    <div><dt>OpenAI</dt><dd id="health-openai">checking</dd></div>
+                    <div><dt>Neon</dt><dd id="health-neon">checking</dd></div>
                   </dl>
-                  <button class="schema-button" type="button">Apply Neon Schema</button>
+                  <button class="schema-button" id="apply-schema" type="button">Apply Neon Schema</button>
                 </section>
 
                 <section>
                   <p class="section-kicker">Recent runs</p>
                   <div class="run-list">
-                    <button type="button"><strong>Revenue_Close_Model.xlsm</strong><span>excel - 18 items - 7 actions</span></button>
-                    <button type="button"><strong>CloseMart.accdb</strong><span>access - 42 items - 12 actions</span></button>
+                    <button type="button"><strong>No runs yet</strong><span>execute a source set to create one</span></button>
                   </div>
                 </section>
               </aside>
@@ -1144,9 +1134,9 @@ Control: Controller reviews variance greater than 3 percent before 7:00 AM distr
 
           <section class="view" id="model">
             <div class="pack-grid">
-              <article class="artifact-card"><div><span>SYS</span><strong>ERP Billing</strong></div><p>Authoritative invoice, order, customer, and billing event source feeding revenue recognition and cash timing.</p><footer><em>Finance Systems</em><strong>94%</strong></footer></article>
-              <article class="artifact-card"><div><span>DB</span><strong>CloseMart.accdb</strong></div><p>Access staging and reporting mart that joins billing exports, customer adjustments, and revenue rules.</p><footer><em>Revenue Analyst</em><strong>89%</strong></footer></article>
-              <article class="artifact-card"><div><span>WB</span><strong>Revenue_Close_Model.xlsm</strong></div><p>Excel model used for manual overrides, Power Query refresh, margin bridge, and finance review package.</p><footer><em>Finance Planning</em><strong>86%</strong></footer></article>
+              <article class="artifact-card"><div><span>SYS</span><strong>Source System</strong></div><p>A discovered upstream system, database, file, or application source with evidence, owner, criticality, relationships, and actions.</p><footer><em>System owner</em><strong>94%</strong></footer></article>
+              <article class="artifact-card"><div><span>DB</span><strong>Discovered Database</strong></div><p>A staged database or source extract with tables, queries, relationships, dependencies, controls, and downstream outputs.</p><footer><em>Data steward</em><strong>89%</strong></footer></article>
+              <article class="artifact-card"><div><span>WB</span><strong>Discovered Workbook</strong></div><p>A workbook source with sheets, formulas, named ranges, Power Query, VBA, external links, pivots, controls, and outputs.</p><footer><em>Process owner</em><strong>86%</strong></footer></article>
             </div>
           </section>
 
@@ -1154,8 +1144,8 @@ Control: Controller reviews variance greater than 3 percent before 7:00 AM distr
             <div class="report-head">
               <div>
                 <p class="section-kicker">Recursive lineage</p>
-                <h2>ERP Billing to Revenue Flash</h2>
-                <p>ERP Billing exports to BillingExport_Daily.csv, Access imports into CloseMart, qry_RevenueFlash_Final transforms the data, and the controller variance check approves the Daily Revenue Flash.</p>
+                <h2>Recursive Source-to-Output Trace</h2>
+                <p>Each selected source becomes a discovery target. The graph traces upstream and downstream across systems, files, queries, macros, controls, documents, and outputs until a terminal node or blocker is documented.</p>
               </div>
               <div class="report-scoreboard">
                 <span><strong>10</strong>Nodes</span>
@@ -1171,7 +1161,7 @@ Control: Controller reviews variance greater than 3 percent before 7:00 AM distr
               <div>
                 <p class="section-kicker">Artifact cockpit</p>
                 <h2>Discovery Action Pack</h2>
-                <p>A concise executive layer sits on top of the graph, lineage, controls, financial exposure, and action backlog.</p>
+                <p>A concise executive layer sits on top of the canonical graph, lineage, controls, business impact, evidence, and action backlog.</p>
               </div>
               <div class="report-scoreboard">
                 <span><strong>10</strong>Items</span>
@@ -1191,7 +1181,7 @@ Control: Controller reviews variance greater than 3 percent before 7:00 AM distr
                   <span>03_Technical_Discovery_Workbook.xlsx</span>
                   <span>04_Auto_Documentation_Pack</span>
                   <span>05_Diagram_Pack</span>
-                  <span>06_Financial_Impact_Model.xlsx</span>
+                  <span>06_Business_Impact_Model.xlsx</span>
                   <span>07_Action_Backlog.csv</span>
                   <span>08_Evidence_Archive</span>
                   <span>09_Metadata_Manifest.json</span>
@@ -1200,32 +1190,32 @@ Control: Controller reviews variance greater than 3 percent before 7:00 AM distr
 
               <article class="report-preview">
                 <p class="section-kicker">Report output</p>
-                <section><h3>Executive Snapshot</h3><p>Finance Close Revenue Distillation supports finance operations, billing assurance, and executive reporting. Current risk is high, with $1.9M base exposure and 4 critical outputs.</p></section>
-                <section><h3>Current-State Narrative</h3><p>At 5:30 AM, ERP Billing exports daily invoice events. Access imports the CSV, executes saved query logic, and feeds the revenue flash transformation. Finance Planning refreshes the macro-enabled workbook for manual adjustments and margin bridge output.</p></section>
+                <section><h3>Executive Snapshot</h3><p>The latest source set is summarized as a current-state discovery package with scope, evidence coverage, confidence, critical outputs, unresolved blockers, and recommended actions.</p></section>
+                <section><h3>Current-State Narrative</h3><p>The generated narrative describes how data moves today: source, trigger, actor, input, transformation, validation, output, handoff, exception path, and evidence references.</p></section>
                 <section><h3>Lineage and Controls</h3><p>Ten node-edge relationships connect systems, files, workbooks, queries, controls, and outputs. Each material branch carries evidence, confidence, and blocker status.</p></section>
-                <section><h3>Remediation Backlog</h3><p>Five action records are prioritized for Fivetran ingestion, dbt rebuild, Snowpark controls, governance, and retirement decisions.</p></section>
+                <section><h3>Remediation Backlog</h3><p>Actions are prioritized for ingestion, modeling, automation, governance, documentation, control hardening, migration, or retirement.</p></section>
               </article>
             </section>
 
             <div class="pack-grid">
-              <article class="artifact-card"><div><span>01</span><strong>Executive Decision Brief</strong></div><p>Risk, dollars, critical outputs, and the decision needed.</p><div class="progress-line"><span style="width:92%"></span></div><footer><em>Leadership</em><strong>92%</strong></footer></article>
+              <article class="artifact-card"><div><span>01</span><strong>Executive Decision Brief</strong></div><p>Purpose, critical outputs, risk posture, impact, evidence confidence, and decisions needed.</p><div class="progress-line"><span style="width:92%"></span></div><footer><em>Leadership</em><strong>92%</strong></footer></article>
               <article class="artifact-card"><div><span>03</span><strong>Technical Discovery Workbook</strong></div><p>Structured inventory of objects, logic, lineage, risks, and actions.</p><div class="progress-line"><span style="width:86%"></span></div><footer><em>Engineers</em><strong>86%</strong></footer></article>
               <article class="artifact-card"><div><span>05</span><strong>Diagram Pack</strong></div><p>Visual truth of process flow, data flow, lineage, dependencies, and failures.</p><div class="progress-line"><span style="width:74%"></span></div><footer><em>All audiences</em><strong>74%</strong></footer></article>
             </div>
           </section>
 
-          <section class="view" id="financial">
+          <section class="view" id="impact">
             <div class="report-head">
-              <div><p class="section-kicker">Financial impact</p><h2>Exposure model</h2><p>Revenue at risk, margin at risk, cash timing impact, rework labor cost, and compliance exposure are priced as low, base, and high bands.</p></div>
-              <div class="report-scoreboard"><span><strong>$420K</strong>Low</span><span><strong>$1.9M</strong>Base</span><span><strong>$6.7M</strong>High</span><span><strong>73%</strong>Confidence</span></div>
+              <div><p class="section-kicker">Business impact</p><h2>Failure impact model</h2><p>Discovery findings are scored by operational impact, downtime risk, data quality risk, compliance exposure, manual recovery effort, and modernization priority.</p></div>
+              <div class="report-scoreboard"><span><strong>No run</strong>Availability</span><span><strong>Late</strong>SLA risk</span><span><strong>Wrong</strong>DQ risk</span><span><strong>Audit</strong>Trace risk</span></div>
             </div>
           </section>
 
           <section class="view" id="backlog">
             <section class="backlog-list">
-              <article><div class="action-priority">P0</div><div><span>ACT-001 - migrate</span><h2>Land ERP billing tables in Snowflake through Fivetran</h2><p>Tables land with row parity, key coverage, and freshness checks.</p></div><aside><strong>Data Platform</strong><em>2026-05-15</em><small>Depends on ERP service account approval</small></aside></article>
-              <article><div class="action-priority">P0</div><div><span>ACT-002 - rebuild</span><h2>Rebuild qry_RevenueFlash_Final as dbt model</h2><p>dbt model reconciles to Access output within approved tolerance for two close cycles.</p></div><aside><strong>Analytics Engineering</strong><em>2026-05-29</em><small>Depends on ACT-001</small></aside></article>
-              <article><div class="action-priority">P1</div><div><span>ACT-003 - stabilize</span><h2>Automate variance control in Snowpark</h2><p>Snowpark check emits pass/fail evidence and blocks uncertified distribution.</p></div><aside><strong>Data Platform</strong><em>2026-06-05</em><small>Depends on threshold owner signoff</small></aside></article>
+              <article><div class="action-priority">P0</div><div><span>ACT-001 - migrate</span><h2>Land selected source tables/files into Snowflake through governed ingestion</h2><p>Sources land with row/file parity, schema capture, ownership, freshness checks, and evidence links.</p></div><aside><strong>Data Platform</strong><em>Next sprint</em><small>Depends on source owner approval</small></aside></article>
+              <article><div class="action-priority">P0</div><div><span>ACT-002 - rebuild</span><h2>Rebuild discovered transformation logic as governed dbt models</h2><p>Models reconcile to discovered current-state outputs within approved tolerance and expose lineage/tests.</p></div><aside><strong>Analytics Engineering</strong><em>2026-05-29</em><small>Depends on ACT-001</small></aside></article>
+              <article><div class="action-priority">P1</div><div><span>ACT-003 - stabilize</span><h2>Automate discovered controls in Snowpark</h2><p>Snowpark checks emit pass/fail evidence and attach results to the generated action pack.</p></div><aside><strong>Data Platform</strong><em>2026-06-05</em><small>Depends on threshold owner signoff</small></aside></article>
             </section>
           </section>
         </section>
@@ -1256,8 +1246,8 @@ Control: Controller reviews variance greater than 3 percent before 7:00 AM distr
       });
 
       function selectedSourceKind() {
-        const selected = document.querySelector('.source-type-grid button.selected strong');
-        return (selected?.textContent || 'mixed').trim().toLowerCase().replace(/\s+/g, '-');
+        const selected = document.querySelector('.source-type-grid button.selected');
+        return selected?.dataset.kind || 'mixed';
       }
 
       function lines(value) {
@@ -1475,12 +1465,10 @@ Control: Controller reviews variance greater than 3 percent before 7:00 AM distr
         document.getElementById('execute-distillery').disabled = true;
 
         try {
-          const token = document.getElementById('admin-token').value.trim();
           const response = await fetch('/api/discovery/synthesize', {
             method: 'POST',
             headers: {
-              'Content-Type': 'application/json',
-              ...(token ? { Authorization: `Bearer ${token}` } : {})
+              'Content-Type': 'application/json'
             },
             body: JSON.stringify({
               sourceKind: selectedSourceKind(),
@@ -1515,9 +1503,34 @@ Control: Controller reviews variance greater than 3 percent before 7:00 AM distr
         try {
           const response = await fetch('/api/health');
           const body = await response.json();
-          result.textContent = `Health: OpenAI ${body.openAIConfigured ? 'configured' : 'missing'}, Neon ${body.database?.ready ? 'ready' : 'not ready'}, model ${body.model}.`;
+          const openAiState = body.openAIConfigured ? 'configured' : 'missing';
+          const neonState = body.database?.ready ? 'schema ready' : (body.database?.configured ? 'configured, schema pending' : 'not configured');
+          document.getElementById('status-openai').textContent = `OpenAI ${openAiState}`;
+          document.getElementById('status-neon').textContent = `Neon ${neonState}`;
+          document.getElementById('health-openai').textContent = openAiState;
+          document.getElementById('health-neon').textContent = neonState;
+          result.textContent = `Health: OpenAI ${openAiState}, Neon ${neonState}, model ${body.model}.`;
         } catch (error) {
           result.textContent = error instanceof Error ? error.message : 'Health check failed.';
+        }
+      }
+
+      async function applySchema() {
+        const result = document.getElementById('run-result');
+        result.hidden = false;
+        result.textContent = 'Applying Neon schema...';
+        try {
+          const response = await fetch('/api/admin/migrate', {
+            method: 'POST'
+          });
+          const body = await response.json();
+          if (!response.ok) {
+            throw new Error(body.error || 'Schema migration failed.');
+          }
+          result.textContent = body.databaseReady ? 'Neon schema applied.' : 'Neon schema endpoint completed.';
+          await refreshHealth();
+        } catch (error) {
+          result.textContent = error instanceof Error ? error.message : 'Schema migration failed.';
         }
       }
 
@@ -1533,6 +1546,8 @@ Control: Controller reviews variance greater than 3 percent before 7:00 AM distr
       document.getElementById('folder-input').addEventListener('change', (event) => stageFiles(event.target.files));
       document.getElementById('execute-distillery').addEventListener('click', executeDistillery);
       document.getElementById('refresh-health').addEventListener('click', refreshHealth);
+      document.getElementById('apply-schema').addEventListener('click', applySchema);
+      void refreshHealth();
     </script>
   </body>
 </html>

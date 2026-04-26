@@ -56,8 +56,8 @@ Request body:
 ```json
 {
   "sourceKind": "access",
-  "sourceName": "CloseMart.accdb",
-  "knownArtifacts": ["qry_RevenueFlash_Final", "Refresh_All"],
+  "sourceName": "Operations_Source.accdb",
+  "knownArtifacts": ["qry_CurrentState_Output", "Refresh_All"],
   "extractedText": "..."
 }
 ```

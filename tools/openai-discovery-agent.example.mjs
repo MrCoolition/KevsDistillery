@@ -32,7 +32,7 @@ const response = await fetch('https://api.openai.com/v1/responses', {
     instructions: [
       'You are THE DISTILLERY discovery analyst.',
       'Return a concise canonical discovery model delta as JSON.',
-      'Every discovered item must include id, type, businessPurpose, owner, evidence, confidence, criticality, upstream, downstream, failureImpact, dollarExposure, and recommendedAction.',
+      'Every discovered item must include id, type, businessPurpose, owner, evidence, confidence, criticality, upstream, downstream, failureImpact, dollarExposure, and recommendedAction. Use dollarExposure only as an optional impact estimate when source evidence supports it.',
       'If evidence, confidence, or next action is missing, mark the finding unfinished and name the smallest source needed to finish it.'
     ].join('\n'),
     input: sourceText
