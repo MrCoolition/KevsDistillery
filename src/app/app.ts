@@ -156,6 +156,66 @@ interface PdfBlock {
   items?: string[];
 }
 
+type DiagramKind = 'valueStream' | 'context' | 'swimlane' | 'dataFlow' | 'lineage' | 'dependency' | 'control' | 'failure' | 'timeline';
+type DiagramTone = 'source' | 'process' | 'graph' | 'output' | 'control' | 'risk' | 'action' | 'neutral';
+
+interface DiagramSpec {
+  id: string;
+  fileBase: string;
+  title: string;
+  subtitle: string;
+  kind: DiagramKind;
+}
+
+interface DiagramNode {
+  id: string;
+  label: string;
+  sublabel: string;
+  type: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  tone: DiagramTone;
+  confidence: number | null;
+}
+
+interface DiagramEdge {
+  id: string;
+  from: string;
+  to: string;
+  label: string;
+  tone: DiagramTone;
+}
+
+interface DiagramLane {
+  label: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+interface DiagramCallout {
+  title: string;
+  text: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  tone: DiagramTone;
+}
+
+interface DiagramScene {
+  spec: DiagramSpec;
+  width: number;
+  height: number;
+  nodes: DiagramNode[];
+  edges: DiagramEdge[];
+  lanes: DiagramLane[];
+  callouts: DiagramCallout[];
+}
+
 @Component({
   selector: 'td-root',
   standalone: true,
@@ -1466,21 +1526,628 @@ export class App {
   }
 
   private async addDiagramPack(zip: unknown, context: PackageContext): Promise<void> {
-    const folder = (zip as { folder: (name: string) => { file: (path: string, data: string | Blob) => void } | null }).folder('05_Diagram_Pack');
-    const diagramNames = [
-      'D01_Executive_Value_Stream.pdf',
-      'D02_System_Context_Diagram.pdf',
-      'D03_Business_Process_Swimlane.pdf',
-      'D04_Detailed_Data_Flow.pdf',
-      'D05_Recursive_Lineage_Graph.pdf',
-      'D06_Object_Dependency_Map.pdf',
-      'D07_Control_And_Exception_Map.pdf',
-      'D08_Failure_Impact_Map.pdf',
-      'D09_Schedule_And_Refresh_Timeline.pdf'
-    ];
-    for (const diagramName of diagramNames) {
-      folder?.file(diagramName, this.buildPdf(diagramName.replace('.pdf', '').replace(/_/g, ' '), this.diagramLines(diagramName, context.items, context.relationships, context.failureRisks)));
+    const folder = (zip as { folder: (name: string) => any }).folder('05_Diagram_Pack');
+    if (!folder) {
+      return;
     }
+
+    const svgFolder = folder.folder('SVG');
+    const mermaidFolder = folder.folder('Mermaid_Source');
+    const indexRows = [['Diagram', 'PDF', 'SVG', 'Mermaid source', 'Purpose']];
+    for (const spec of this.diagramSpecs()) {
+      const scene = this.buildDiagramScene(spec, context);
+      folder.file(`${spec.fileBase}.pdf`, this.buildVisualDiagramPdf(scene));
+      svgFolder?.file(`${spec.fileBase}.svg`, this.buildDiagramSvg(scene));
+      mermaidFolder?.file(`${spec.fileBase}.mmd`, this.buildDiagramMermaid(scene));
+      indexRows.push([
+        spec.title,
+        `${spec.fileBase}.pdf`,
+        `SVG/${spec.fileBase}.svg`,
+        `Mermaid_Source/${spec.fileBase}.mmd`,
+        spec.subtitle
+      ]);
+    }
+    folder.file('Diagram_Index.csv', indexRows.map((row) => row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(',')).join('\r\n'));
+  }
+
+  private diagramSpecs(): DiagramSpec[] {
+    return [
+      { id: 'D01', fileBase: 'D01_Executive_Value_Stream', title: 'D01 Executive Value Stream', subtitle: 'Source evidence to migration action, with business value and decision points.', kind: 'valueStream' },
+      { id: 'D02', fileBase: 'D02_System_Context_Diagram', title: 'D02 System Context Diagram', subtitle: 'Systems, files, people, and outputs surrounding the canonical discovery graph.', kind: 'context' },
+      { id: 'D03', fileBase: 'D03_Business_Process_Swimlane', title: 'D03 Business Process Swimlane', subtitle: 'End-to-end operating model by role, source, Distillery step, and engineering handoff.', kind: 'swimlane' },
+      { id: 'D04', fileBase: 'D04_Detailed_Data_Flow', title: 'D04 Detailed Data Flow', subtitle: 'Data movements, transformations, storage points, and downstream outputs.', kind: 'dataFlow' },
+      { id: 'D05', fileBase: 'D05_Recursive_Lineage_Graph', title: 'D05 Recursive Lineage Graph', subtitle: 'Upstream chain from critical outputs to source candidates and documented blockers.', kind: 'lineage' },
+      { id: 'D06', fileBase: 'D06_Object_Dependency_Map', title: 'D06 Object Dependency Map', subtitle: 'Object-level dependency map for sources, queries, logic, reports, and outputs.', kind: 'dependency' },
+      { id: 'D07', fileBase: 'D07_Control_And_Exception_Map', title: 'D07 Control And Exception Map', subtitle: 'Controls, exceptions, failure conditions, mitigations, and evidence confidence.', kind: 'control' },
+      { id: 'D08', fileBase: 'D08_Failure_Impact_Map', title: 'D08 Failure Impact Map', subtitle: 'Failure scenarios mapped to impacted outputs, action owners, and exposure context.', kind: 'failure' },
+      { id: 'D09', fileBase: 'D09_Schedule_And_Refresh_Timeline', title: 'D09 Schedule And Refresh Timeline', subtitle: 'Cadence, cutoffs, sequencing, dependencies, and timing risk.', kind: 'timeline' }
+    ];
+  }
+
+  private buildDiagramScene(spec: DiagramSpec, context: PackageContext): DiagramScene {
+    const width = 1200;
+    const height = 760;
+    const sourceName = this.labelFor(context.delta.processName) || this.importSourceName();
+    const objects = this.diagramObjectNodes(context);
+    const relationships = this.diagramRelationshipEdges(context, objects);
+    const risks: Record<string, unknown>[] = context.failureRisks.length
+      ? context.failureRisks
+      : this.model.failureRisks.map((risk) => ({ ...risk }) as unknown as Record<string, unknown>);
+    const actions: Record<string, unknown>[] = context.backlog.length
+      ? context.backlog
+      : this.model.backlog.map((action) => ({ ...action }) as unknown as Record<string, unknown>);
+
+    if (spec.kind === 'valueStream') {
+      const nodes = [
+        this.diagramNode('SRC', 'Raw source set', sourceName, 'source', 70, 286, 150, 96, 'source', 85),
+        this.diagramNode('EXT', 'Evidence extraction', 'files, docs, SQL, workbook XML', 'process', 270, 286, 166, 96, 'process', 82),
+        this.diagramNode('GRAPH', 'Canonical proof graph', 'nodes, edges, evidence, confidence', 'graph', 488, 260, 188, 122, 'graph', 88),
+        this.diagramNode('DOCS', 'Auto documentation', 'current-state inventory and narrative', 'output', 730, 205, 174, 96, 'output', 84),
+        this.diagramNode('DIAGS', 'Diagram pack', 'value, context, flow, lineage, impact', 'output', 730, 370, 174, 96, 'output', 84),
+        this.diagramNode('ACTIONS', 'Engineering backlog', 'Fivetran, dbt, SQL, Snowpark work', 'action', 965, 286, 170, 96, 'action', 82)
+      ];
+      return {
+        spec,
+        width,
+        height,
+        nodes,
+        edges: [
+          this.diagramEdge('E1', 'SRC', 'EXT', 'extracts', 'source'),
+          this.diagramEdge('E2', 'EXT', 'GRAPH', 'normalizes', 'process'),
+          this.diagramEdge('E3', 'GRAPH', 'DOCS', 'documents', 'output'),
+          this.diagramEdge('E4', 'GRAPH', 'DIAGS', 'renders', 'output'),
+          this.diagramEdge('E5', 'DOCS', 'ACTIONS', 'drives', 'action'),
+          this.diagramEdge('E6', 'DIAGS', 'ACTIONS', 'prioritizes', 'action')
+        ],
+        lanes: [],
+        callouts: [
+          this.diagramCallout('Done standard', 'Every node maps back to evidence, confidence, owner, impact, and next action.', 450, 560, 300, 96, 'graph'),
+          this.diagramCallout('Business exposure', this.exposureSummary(context.delta.estimatedDollarExposure) || 'Exposure model generated from process failure, lateness, wrong data, partial run, and auditability scenarios.', 805, 560, 320, 96, 'risk')
+        ]
+      };
+    }
+
+    if (spec.kind === 'context') {
+      const center = this.diagramNode('GRAPH', 'Canonical discovery graph', 'single model driving all artifacts', 'graph', 494, 302, 212, 118, 'graph', 90);
+      const around = objects.slice(0, 10).map((node, index) => {
+        const angle = (-120 + index * (240 / Math.max(objects.slice(0, 10).length - 1, 1))) * Math.PI / 180;
+        const radiusX = 405;
+        const radiusY = 242;
+        return {
+          ...node,
+          x: 600 + Math.cos(angle) * radiusX - 82,
+          y: 360 + Math.sin(angle) * radiusY - 42,
+          w: 164,
+          h: 84,
+          tone: index % 3 === 0 ? 'source' as DiagramTone : node.tone
+        };
+      });
+      return {
+        spec,
+        width,
+        height,
+        nodes: [center, ...around],
+        edges: around.map((node, index) => this.diagramEdge(`CTX-${index}`, node.id, 'GRAPH', node.type || 'feeds', node.tone)),
+        lanes: [],
+        callouts: [
+          this.diagramCallout('Scope', `${objects.length} discovered objects and ${relationships.length} discovered relationships in the current run.`, 60, 595, 265, 78, 'neutral'),
+          this.diagramCallout('Outputs', `${this.liveArtifacts().length} action-pack artifacts generated from the graph.`, 875, 595, 265, 78, 'output')
+        ]
+      };
+    }
+
+    if (spec.kind === 'swimlane') {
+      const lanes = [
+        this.diagramLane('Business / Operations', 58, 150, 1084, 116),
+        this.diagramLane('Source Systems & Files', 58, 276, 1084, 116),
+        this.diagramLane("Uncle Kev's Distillery", 58, 402, 1084, 116),
+        this.diagramLane('Engineering Delivery', 58, 528, 1084, 116)
+      ];
+      const nodes = [
+        this.diagramNode('TRIGGER', 'Trigger / SLA window', 'business asks for a trusted output', 'process', 110, 178, 150, 68, 'process', null),
+        this.diagramNode('SELECT', 'Select sources', 'files, DBs, workbooks, docs', 'source', 310, 304, 150, 68, 'source', null),
+        this.diagramNode('RUN', 'Run Distillery', 'extract, infer, score, synthesize', 'graph', 510, 430, 160, 68, 'graph', null),
+        this.diagramNode('REVIEW', 'Review blockers', 'evidence gaps and confidence', 'control', 710, 430, 160, 68, 'control', null),
+        this.diagramNode('PACK', 'Action pack', 'reports, diagrams, workbook, backlog', 'output', 910, 430, 160, 68, 'output', null),
+        this.diagramNode('BUILD', 'Modernize', 'ingest, model, test, govern', 'action', 910, 556, 160, 68, 'action', null)
+      ];
+      return {
+        spec,
+        width,
+        height,
+        nodes,
+        edges: [
+          this.diagramEdge('S1', 'TRIGGER', 'SELECT', 'request', 'process'),
+          this.diagramEdge('S2', 'SELECT', 'RUN', 'stage', 'source'),
+          this.diagramEdge('S3', 'RUN', 'REVIEW', 'findings', 'graph'),
+          this.diagramEdge('S4', 'REVIEW', 'PACK', 'approve', 'control'),
+          this.diagramEdge('S5', 'PACK', 'BUILD', 'deliver', 'action')
+        ],
+        lanes,
+        callouts: []
+      };
+    }
+
+    if (spec.kind === 'control') {
+      const riskNodes = risks.slice(0, 4).map((risk, index) => this.diagramNode(
+        `RISK-${index + 1}`,
+        this.readString(risk, ['scenario', 'risk', 'name']) || `Risk ${index + 1}`,
+        this.readString(risk, ['detection', 'failureCondition', 'failure_condition']) || 'detection method pending',
+        'failure mode',
+        80,
+        168 + index * 118,
+        230,
+        84,
+        'risk',
+        this.readNumber(risk, ['confidence'])
+      ));
+      const controlNodes = riskNodes.map((node, index) => this.diagramNode(
+        `CTRL-${index + 1}`,
+        index % 2 === 0 ? 'Preventive / detective control' : 'Exception path',
+        'owner, mitigation, evidence required',
+        'control',
+        480,
+        node.y,
+        220,
+        84,
+        'control',
+        null
+      ));
+      const actionNodes = controlNodes.map((node, index) => this.diagramNode(
+        `ACT-${index + 1}`,
+        this.readString(actions[index] || {}, ['title', 'action', 'summary']) || 'Remediation action',
+        this.readString(actions[index] || {}, ['owner']) || 'owner pending',
+        'action',
+        880,
+        node.y,
+        220,
+        84,
+        'action',
+        null
+      ));
+      return {
+        spec,
+        width,
+        height,
+        nodes: [...riskNodes, ...controlNodes, ...actionNodes],
+        edges: riskNodes.flatMap((node, index) => [
+          this.diagramEdge(`C${index}-A`, node.id, controlNodes[index].id, 'detects / mitigates', 'control'),
+          this.diagramEdge(`C${index}-B`, controlNodes[index].id, actionNodes[index].id, 'remediates', 'action')
+        ]),
+        lanes: [],
+        callouts: [
+          this.diagramCallout('Control rule', 'Every material failure mode must have detection, recovery, owner, evidence, and acceptance criteria.', 330, 625, 540, 64, 'control')
+        ]
+      };
+    }
+
+    if (spec.kind === 'failure') {
+      const scenarios = risks.slice(0, 5).map((risk, index) => this.diagramNode(
+        `FAIL-${index + 1}`,
+        this.readString(risk, ['scenario', 'risk', 'name']) || `Failure ${index + 1}`,
+        this.readString(risk, ['effect', 'impactedOutput', 'impacted_output']) || 'impact pending',
+        'failure',
+        70,
+        140 + index * 100,
+        250,
+        72,
+        'risk',
+        this.readNumber(risk, ['confidence'])
+      ));
+      const output = this.diagramNode('OUT', 'Critical outputs', this.listText(context.deltaRecord['criticalOutputs'], this.targetOutputs().join(', ')) || 'outputs pending', 'output', 480, 300, 240, 100, 'output', null);
+      const action = this.diagramNode('ACTION', 'Action backlog', `${context.backlog.length || this.model.backlog.length} prioritized actions`, 'action', 890, 300, 230, 100, 'action', null);
+      return {
+        spec,
+        width,
+        height,
+        nodes: [...scenarios, output, action],
+        edges: [
+          ...scenarios.map((node, index) => this.diagramEdge(`F${index}`, node.id, 'OUT', 'breaks / delays', 'risk')),
+          this.diagramEdge('F-ACTION', 'OUT', 'ACTION', 'drives', 'action')
+        ],
+        lanes: [],
+        callouts: [
+          this.diagramCallout('Dollar lens', this.exposureSummary(context.delta.estimatedDollarExposure) || 'Revenue, margin, cash timing, rework, SLA, compliance, and customer exposure are priced when source evidence supports it.', 430, 560, 520, 86, 'risk')
+        ]
+      };
+    }
+
+    if (spec.kind === 'timeline') {
+      const steps = [
+        ['T1', 'Source selected', 'intake'],
+        ['T2', 'Readable evidence extracted', 'local parse'],
+        ['T3', 'Distillery run', 'synthesis'],
+        ['T4', 'Graph saved', 'canonical model'],
+        ['T5', 'Artifacts generated', 'action pack'],
+        ['T6', 'Engineering actioned', 'delivery']
+      ];
+      const nodes = steps.map(([id, label, sublabel], index) => this.diagramNode(id, label, sublabel, 'timeline', 90 + index * 180, 336 + (index % 2 === 0 ? -88 : 88), 142, 66, index < 2 ? 'source' : index < 4 ? 'graph' : 'action', null));
+      return {
+        spec,
+        width,
+        height,
+        nodes,
+        edges: steps.slice(0, -1).map((step, index) => this.diagramEdge(`T${index}`, step[0], steps[index + 1][0], 'next', 'process')),
+        lanes: [this.diagramLane('Run sequence and refresh dependency path', 80, 355, 1040, 52)],
+        callouts: [
+          this.diagramCallout('Timing risk', 'Late, wrong, partial, failed, or unauditable runs become priced failure scenarios in the impact model.', 330, 590, 540, 68, 'risk')
+        ]
+      };
+    }
+
+    const placed = this.placeObjectNodes(objects, spec.kind);
+    const fallbackEdges = relationships.length
+      ? relationships
+      : placed.slice(0, -1).map((node, index) => this.diagramEdge(`AUTO-${index}`, node.id, placed[index + 1].id, 'depends on', 'neutral'));
+    const callouts = spec.kind === 'lineage'
+      ? [this.diagramCallout('Terminal condition', 'Each branch stops only at a source of record, third party, manual entry, blocker, duplicate, obsolete source, or approved stopping point.', 690, 590, 420, 82, 'graph')]
+      : spec.kind === 'dependency'
+        ? [this.diagramCallout('Object rule', 'Every object node maps to evidence and every edge maps to a dependency, transform, read/write, approval, or blocker.', 690, 590, 420, 82, 'graph')]
+        : [this.diagramCallout('Flow rule', 'Every movement must declare source, target, transform, cadence, confidence, and downstream failure impact.', 690, 590, 420, 82, 'graph')];
+
+    return {
+      spec,
+      width,
+      height,
+      nodes: placed,
+      edges: fallbackEdges,
+      lanes: [],
+      callouts
+    };
+  }
+
+  private diagramObjectNodes(context: PackageContext): DiagramNode[] {
+    const records = context.items.length ? context.items : [
+      { id: 'SRC-001', name: this.importSourceName(), type: this.importSourceKind(), confidence: 70 },
+      { id: 'GRAPH-001', name: 'Canonical discovery graph', type: 'graph', confidence: 80 },
+      { id: 'PACK-001', name: 'Discovery Action Pack', type: 'output', confidence: 80 }
+    ];
+
+    return records.slice(0, 12).map((item, index) => {
+      const type = this.readString(item, ['type', 'node_type']) || 'object';
+      return this.diagramNode(
+        this.readString(item, ['id', 'item_id', 'node_id']) || `N${index + 1}`,
+        this.readString(item, ['name', 'object_name']) || `Discovered object ${index + 1}`,
+        type,
+        type,
+        0,
+        0,
+        170,
+        78,
+        this.toneForType(type),
+        this.readNumber(item, ['confidence'])
+      );
+    });
+  }
+
+  private diagramRelationshipEdges(context: PackageContext, nodes: DiagramNode[]): DiagramEdge[] {
+    const ids = new Set(nodes.map((node) => node.id));
+    return context.relationships
+      .map((relationship, index) => {
+        const from = this.readString(relationship, ['fromId', 'from_id', 'from']);
+        const to = this.readString(relationship, ['toId', 'to_id', 'to']);
+        if (!ids.has(from) || !ids.has(to)) {
+          return null;
+        }
+        return this.diagramEdge(
+          this.readString(relationship, ['id', 'relationship_id']) || `REL-${index + 1}`,
+          from,
+          to,
+          this.readString(relationship, ['type', 'relationship_type', 'edgeType']) || 'depends on',
+          'neutral'
+        );
+      })
+      .filter((edge): edge is DiagramEdge => Boolean(edge));
+  }
+
+  private placeObjectNodes(nodes: DiagramNode[], kind: DiagramKind): DiagramNode[] {
+    if (kind === 'lineage') {
+      const columns = [94, 344, 594, 844];
+      return nodes.map((node, index) => ({
+        ...node,
+        x: columns[index % columns.length],
+        y: 160 + Math.floor(index / columns.length) * 138,
+        w: 184,
+        h: 88
+      }));
+    }
+
+    if (kind === 'dataFlow') {
+      return nodes.map((node, index) => ({
+        ...node,
+        x: 80 + (index % 5) * 214,
+        y: 190 + Math.floor(index / 5) * 166,
+        w: 172,
+        h: 88
+      }));
+    }
+
+    return nodes.map((node, index) => ({
+      ...node,
+      x: 80 + (index % 4) * 270,
+      y: 150 + Math.floor(index / 4) * 150,
+      w: 210,
+      h: 92
+    }));
+  }
+
+  private diagramNode(id: string, label: string, sublabel: string, type: string, x: number, y: number, w: number, h: number, tone: DiagramTone, confidence: number | null): DiagramNode {
+    return { id, label: this.cleanDisplayText(label), sublabel: this.cleanDisplayText(sublabel), type: this.cleanDisplayText(type), x, y, w, h, tone, confidence };
+  }
+
+  private diagramEdge(id: string, from: string, to: string, label: string, tone: DiagramTone): DiagramEdge {
+    return { id, from, to, label: this.cleanDisplayText(label), tone };
+  }
+
+  private diagramLane(label: string, x: number, y: number, w: number, h: number): DiagramLane {
+    return { label, x, y, w, h };
+  }
+
+  private diagramCallout(title: string, text: string, x: number, y: number, w: number, h: number, tone: DiagramTone): DiagramCallout {
+    return { title: this.cleanDisplayText(title), text: this.cleanDisplayText(text), x, y, w, h, tone };
+  }
+
+  private toneForType(type: string): DiagramTone {
+    if (/risk|failure|exception/i.test(type)) {
+      return 'risk';
+    }
+    if (/control|approval|validation/i.test(type)) {
+      return 'control';
+    }
+    if (/action|backlog|remediation/i.test(type)) {
+      return 'action';
+    }
+    if (/report|output|artifact|pack/i.test(type)) {
+      return 'output';
+    }
+    if (/process|step|macro|query|transform|logic|vba|sql/i.test(type)) {
+      return 'process';
+    }
+    if (/graph|lineage|model/i.test(type)) {
+      return 'graph';
+    }
+    if (/source|system|database|file|workbook|table|sheet|document|access|excel/i.test(type)) {
+      return 'source';
+    }
+    return 'neutral';
+  }
+
+  private buildDiagramSvg(scene: DiagramScene): string {
+    const nodeById = new Map(scene.nodes.map((node) => [node.id, node]));
+    const edges = scene.edges.map((edge) => {
+      const from = nodeById.get(edge.from);
+      const to = nodeById.get(edge.to);
+      if (!from || !to) {
+        return '';
+      }
+      const points = this.edgePoints(from, to);
+      const color = this.diagramTone(edge.tone).stroke;
+      const labelX = (points.x1 + points.x2) / 2;
+      const labelY = (points.y1 + points.y2) / 2 - 8;
+      return `<g class="edge"><line x1="${points.x1}" y1="${points.y1}" x2="${points.x2}" y2="${points.y2}" stroke="${color}" stroke-width="3" marker-end="url(#arrow)"/><text x="${labelX}" y="${labelY}" text-anchor="middle">${this.escapeXml(edge.label)}</text></g>`;
+    }).join('');
+    const lanes = scene.lanes.map((lane) => `<g class="lane"><rect x="${lane.x}" y="${lane.y}" width="${lane.w}" height="${lane.h}" rx="18"/><text x="${lane.x + 22}" y="${lane.y + 30}">${this.escapeXml(lane.label)}</text></g>`).join('');
+    const nodes = scene.nodes.map((node) => {
+      const tone = this.diagramTone(node.tone);
+      const titleLines = this.wrapText(node.label, Math.max(12, Math.floor(node.w / 9))).slice(0, 3);
+      const subLines = this.wrapText(node.sublabel, Math.max(14, Math.floor(node.w / 8))).slice(0, 2);
+      const title = titleLines.map((line, index) => `<tspan x="${node.x + 18}" dy="${index === 0 ? 0 : 20}">${this.escapeXml(line)}</tspan>`).join('');
+      const sub = subLines.map((line, index) => `<tspan x="${node.x + 18}" dy="${index === 0 ? 26 : 15}">${this.escapeXml(line)}</tspan>`).join('');
+      const confidence = node.confidence === null ? '' : `<text class="confidence" x="${node.x + node.w - 18}" y="${node.y + node.h - 18}" text-anchor="end">${node.confidence}%</text>`;
+      return `<g class="node ${node.tone}"><rect x="${node.x}" y="${node.y}" width="${node.w}" height="${node.h}" rx="18" fill="${tone.fill}" stroke="${tone.stroke}"/><text class="node-id" x="${node.x + 18}" y="${node.y + 23}">${this.escapeXml(node.id)}</text><text class="node-title" x="${node.x + 18}" y="${node.y + 48}">${title}</text><text class="node-sub" x="${node.x + 18}" y="${node.y + node.h - 32}">${sub}</text>${confidence}</g>`;
+    }).join('');
+    const callouts = scene.callouts.map((callout) => {
+      const tone = this.diagramTone(callout.tone);
+      const lines = this.wrapText(callout.text, Math.floor(callout.w / 8.6)).slice(0, 4);
+      return `<g class="callout"><rect x="${callout.x}" y="${callout.y}" width="${callout.w}" height="${callout.h}" rx="18" fill="${tone.soft}" stroke="${tone.stroke}"/><text class="callout-title" x="${callout.x + 18}" y="${callout.y + 28}">${this.escapeXml(callout.title)}</text><text class="callout-text" x="${callout.x + 18}" y="${callout.y + 53}">${lines.map((line, index) => `<tspan x="${callout.x + 18}" dy="${index === 0 ? 0 : 16}">${this.escapeXml(line)}</tspan>`).join('')}</text></g>`;
+    }).join('');
+
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${scene.width}" height="${scene.height}" viewBox="0 0 ${scene.width} ${scene.height}" role="img" aria-label="${this.escapeXml(scene.spec.title)}">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#0d0805"/><stop offset="0.55" stop-color="#130d09"/><stop offset="1" stop-color="#061611"/></linearGradient>
+    <pattern id="grid" width="44" height="44" patternUnits="userSpaceOnUse"><path d="M 44 0 L 0 0 0 44" fill="none" stroke="#6f431d" stroke-opacity="0.18" stroke-width="1"/></pattern>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="14" stdDeviation="13" flood-color="#000" flood-opacity="0.38"/></filter>
+    <marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="10" markerHeight="10" orient="auto-start-reverse"><path d="M 1 1 L 11 6 L 1 11 z" fill="#d88b35"/></marker>
+  </defs>
+  <style>
+    .title{font:900 36px Arial, sans-serif;fill:#fff5e6}.subtitle{font:700 16px Arial, sans-serif;fill:#d8b37d}.meta{font:800 12px Arial, sans-serif;fill:#b88a56;text-transform:uppercase;letter-spacing:.08em}.lane rect{fill:#ffffff08;stroke:#d88b3540;stroke-width:1.5}.lane text{font:900 14px Arial, sans-serif;fill:#d8b37d}.edge text{font:800 11px Arial, sans-serif;fill:#f3d5a8;paint-order:stroke;stroke:#130d09;stroke-width:5}.node{filter:url(#glow)}.node rect{stroke-width:2.5}.node-id{font:900 11px Arial, sans-serif;fill:#f7c987}.node-title{font:900 17px Arial, sans-serif;fill:#fff8ec}.node-sub{font:700 12px Arial, sans-serif;fill:#d9c3a6}.confidence{font:900 13px Arial, sans-serif;fill:#8ff0d2}.callout-title{font:900 14px Arial, sans-serif;fill:#fff2df}.callout-text{font:700 12px Arial, sans-serif;fill:#e8cfac}
+  </style>
+  <rect width="1200" height="760" fill="url(#bg)"/><rect width="1200" height="760" fill="url(#grid)"/>
+  <rect x="44" y="34" width="1112" height="82" rx="24" fill="#1b1009" stroke="#d88b35" stroke-opacity="0.45"/>
+  <text class="meta" x="72" y="66">Uncle Kev's Distillery / Discovery Action Pack</text>
+  <text class="title" x="72" y="101">${this.escapeXml(scene.spec.title)}</text>
+  <text class="subtitle" x="72" y="138">${this.escapeXml(scene.spec.subtitle)}</text>
+  ${lanes}
+  ${edges}
+  ${nodes}
+  ${callouts}
+</svg>`;
+  }
+
+  private buildDiagramMermaid(scene: DiagramScene): string {
+    const lines = ['flowchart LR'];
+    for (const node of scene.nodes) {
+      lines.push(`  ${this.mermaidId(node.id)}["${this.escapeMermaid(node.label)}<br/>${this.escapeMermaid(node.sublabel)}"]`);
+    }
+    for (const edge of scene.edges) {
+      lines.push(`  ${this.mermaidId(edge.from)} -->|"${this.escapeMermaid(edge.label)}"| ${this.mermaidId(edge.to)}`);
+    }
+    lines.push('  classDef source fill:#2c1a10,stroke:#d88b35,color:#fff5e6');
+    lines.push('  classDef process fill:#251a2f,stroke:#c59cff,color:#fff5e6');
+    lines.push('  classDef graph fill:#073126,stroke:#34d7b4,color:#fff5e6');
+    lines.push('  classDef output fill:#102641,stroke:#7aa7ff,color:#fff5e6');
+    lines.push('  classDef control fill:#243018,stroke:#b4dc68,color:#fff5e6');
+    lines.push('  classDef risk fill:#44181a,stroke:#ff6b6b,color:#fff5e6');
+    lines.push('  classDef action fill:#322006,stroke:#f7b84b,color:#fff5e6');
+    lines.push('  classDef neutral fill:#1d1916,stroke:#a68a68,color:#fff5e6');
+    for (const node of scene.nodes) {
+      lines.push(`  class ${this.mermaidId(node.id)} ${node.tone};`);
+    }
+    return lines.join('\n');
+  }
+
+  private buildVisualDiagramPdf(scene: DiagramScene): Blob {
+    const pageWidth = 792;
+    const pageHeight = 612;
+    const scale = Math.min(pageWidth / scene.width, pageHeight / scene.height);
+    const offsetX = (pageWidth - scene.width * scale) / 2;
+    const offsetY = (pageHeight - scene.height * scale) / 2;
+    const commands: string[] = [];
+    const sx = (x: number): number => offsetX + x * scale;
+    const sy = (y: number): number => pageHeight - (offsetY + y * scale);
+    const rectY = (y: number, h: number): number => pageHeight - (offsetY + (y + h) * scale);
+    const color = (rgb: [number, number, number]): string => rgb.map((part) => part.toFixed(3).replace(/0+$/, '').replace(/\.$/, '')).join(' ');
+    const hexRgb = (hex: string): [number, number, number] => {
+      const clean = hex.replace('#', '');
+      return [
+        parseInt(clean.slice(0, 2), 16) / 255,
+        parseInt(clean.slice(2, 4), 16) / 255,
+        parseInt(clean.slice(4, 6), 16) / 255
+      ];
+    };
+    const rect = (x: number, y: number, w: number, h: number, fill: string, stroke = '', strokeWidth = 1): void => {
+      const fillColor = color(hexRgb(fill));
+      const strokePart = stroke ? `${color(hexRgb(stroke))} RG ${strokeWidth} w` : '';
+      const op = stroke ? 'B' : 'f';
+      commands.push(`q ${fillColor} rg ${strokePart} ${sx(x)} ${rectY(y, h)} ${w * scale} ${h * scale} re ${op} Q`);
+    };
+    const line = (x1: number, y1: number, x2: number, y2: number, stroke: string, width = 2): void => {
+      commands.push(`q ${color(hexRgb(stroke))} RG ${width} w ${sx(x1)} ${sy(y1)} m ${sx(x2)} ${sy(y2)} l S Q`);
+    };
+    const polygon = (points: Array<[number, number]>, fill: string): void => {
+      if (!points.length) {
+        return;
+      }
+      const [first, ...rest] = points;
+      commands.push(`q ${color(hexRgb(fill))} rg ${sx(first[0])} ${sy(first[1])} m ${rest.map((point) => `${sx(point[0])} ${sy(point[1])} l`).join(' ')} h f Q`);
+    };
+    const text = (x: number, y: number, value: string, size: number, font: 'F1' | 'F2', fill = '#fff5e6'): void => {
+      commands.push(`BT /${font} ${Math.max(5, size * scale)} Tf ${color(hexRgb(fill))} rg ${sx(x)} ${sy(y)} Td (${this.escapePdf(this.stripControlChars(value))}) Tj ET`);
+    };
+    const wrappedText = (x: number, y: number, value: string, width: number, size: number, font: 'F1' | 'F2', fill = '#fff5e6', maxLines = 3): void => {
+      this.wrapText(value, Math.max(10, Math.floor(width / (size * 0.56)))).slice(0, maxLines).forEach((lineText, index) => {
+        text(x, y + index * (size + 4), lineText, size, font, fill);
+      });
+    };
+
+    rect(0, 0, scene.width, scene.height, '#0d0805');
+    for (let x = 0; x <= scene.width; x += 48) {
+      line(x, 0, x, scene.height, '#2a1a10', 0.45);
+    }
+    for (let y = 0; y <= scene.height; y += 48) {
+      line(0, y, scene.width, y, '#2a1a10', 0.45);
+    }
+    rect(44, 34, 1112, 82, '#1b1009', '#d88b35', 1.4);
+    text(72, 66, "Uncle Kev's Distillery / Discovery Action Pack", 12, 'F2', '#d8b37d');
+    text(72, 101, scene.spec.title, 34, 'F2', '#fff5e6');
+    wrappedText(72, 136, scene.spec.subtitle, 900, 15, 'F1', '#d8b37d', 1);
+
+    for (const lane of scene.lanes) {
+      rect(lane.x, lane.y, lane.w, lane.h, '#15100c', '#5b3719', 0.7);
+      text(lane.x + 22, lane.y + 30, lane.label, 14, 'F2', '#d8b37d');
+    }
+
+    const nodeById = new Map(scene.nodes.map((node) => [node.id, node]));
+    for (const edge of scene.edges) {
+      const from = nodeById.get(edge.from);
+      const to = nodeById.get(edge.to);
+      if (!from || !to) {
+        continue;
+      }
+      const points = this.edgePoints(from, to);
+      const tone = this.diagramTone(edge.tone);
+      line(points.x1, points.y1, points.x2, points.y2, tone.stroke, 2.2);
+      const angle = Math.atan2(points.y2 - points.y1, points.x2 - points.x1);
+      const arrow = 14;
+      polygon([
+        [points.x2, points.y2],
+        [points.x2 - Math.cos(angle - 0.45) * arrow, points.y2 - Math.sin(angle - 0.45) * arrow],
+        [points.x2 - Math.cos(angle + 0.45) * arrow, points.y2 - Math.sin(angle + 0.45) * arrow]
+      ], tone.stroke);
+      wrappedText((points.x1 + points.x2) / 2 - 55, (points.y1 + points.y2) / 2 - 10, edge.label, 110, 10, 'F2', '#f3d5a8', 1);
+    }
+
+    for (const node of scene.nodes) {
+      const tone = this.diagramTone(node.tone);
+      rect(node.x, node.y, node.w, node.h, tone.fill, tone.stroke, 1.5);
+      text(node.x + 16, node.y + 24, node.id, 11, 'F2', '#f7c987');
+      wrappedText(node.x + 16, node.y + 50, node.label, node.w - 30, 17, 'F2', '#fff8ec', 2);
+      wrappedText(node.x + 16, node.y + node.h - 30, node.sublabel, node.w - 30, 11, 'F1', '#d9c3a6', 1);
+      if (node.confidence !== null) {
+        text(node.x + node.w - 48, node.y + node.h - 17, `${node.confidence}%`, 12, 'F2', '#8ff0d2');
+      }
+    }
+
+    for (const callout of scene.callouts) {
+      const tone = this.diagramTone(callout.tone);
+      rect(callout.x, callout.y, callout.w, callout.h, tone.soft, tone.stroke, 1.2);
+      text(callout.x + 18, callout.y + 28, callout.title, 14, 'F2', '#fff2df');
+      wrappedText(callout.x + 18, callout.y + 54, callout.text, callout.w - 36, 11, 'F1', '#e8cfac', 4);
+    }
+
+    const content = commands.join('\n');
+    const objects: string[] = [];
+    objects[1] = '<< /Type /Catalog /Pages 2 0 R >>';
+    objects[2] = '<< /Type /Pages /Kids [5 0 R] /Count 1 >>';
+    objects[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>';
+    objects[4] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>';
+    objects[5] = '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 792 612] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents 6 0 R >>';
+    objects[6] = `<< /Length ${content.length} >>\nstream\n${content}\nendstream`;
+    return this.pdfFromObjects(objects);
+  }
+
+  private edgePoints(from: DiagramNode, to: DiagramNode): { x1: number; y1: number; x2: number; y2: number } {
+    const fromCenter = { x: from.x + from.w / 2, y: from.y + from.h / 2 };
+    const toCenter = { x: to.x + to.w / 2, y: to.y + to.h / 2 };
+    const dx = toCenter.x - fromCenter.x || 1;
+    const dy = toCenter.y - fromCenter.y || 1;
+    const trimFrom = Math.min(Math.abs((from.w / 2) / dx), Math.abs((from.h / 2) / dy)) * 0.88;
+    const trimTo = Math.min(Math.abs((to.w / 2) / dx), Math.abs((to.h / 2) / dy)) * 0.88;
+    return {
+      x1: fromCenter.x + dx * trimFrom,
+      y1: fromCenter.y + dy * trimFrom,
+      x2: toCenter.x - dx * trimTo,
+      y2: toCenter.y - dy * trimTo
+    };
+  }
+
+  private diagramTone(tone: DiagramTone): { fill: string; stroke: string; soft: string } {
+    const tones: Record<DiagramTone, { fill: string; stroke: string; soft: string }> = {
+      source: { fill: '#2b1d14', stroke: '#d88b35', soft: '#21150d' },
+      process: { fill: '#251a2f', stroke: '#c59cff', soft: '#1b1424' },
+      graph: { fill: '#073126', stroke: '#34d7b4', soft: '#06241c' },
+      output: { fill: '#102641', stroke: '#7aa7ff', soft: '#0c1c30' },
+      control: { fill: '#243018', stroke: '#b4dc68', soft: '#192212' },
+      risk: { fill: '#44181a', stroke: '#ff6b6b', soft: '#2a1011' },
+      action: { fill: '#322006', stroke: '#f7b84b', soft: '#241704' },
+      neutral: { fill: '#1d1916', stroke: '#a68a68', soft: '#171311' }
+    };
+    return tones[tone];
+  }
+
+  private mermaidId(value: string): string {
+    return `N_${value.replace(/[^A-Za-z0-9_]+/g, '_')}`;
+  }
+
+  private escapeMermaid(value: string): string {
+    return this.cleanDisplayText(value).replace(/"/g, "'");
+  }
+
+  private pdfFromObjects(objects: string[]): Blob {
+    let pdf = '%PDF-1.4\n';
+    const offsets = [0];
+    for (let index = 1; index < objects.length; index += 1) {
+      offsets[index] = pdf.length;
+      pdf += `${index} 0 obj\n${objects[index]}\nendobj\n`;
+    }
+    const xrefOffset = pdf.length;
+    pdf += `xref\n0 ${objects.length}\n0000000000 65535 f \n`;
+    for (let index = 1; index < objects.length; index += 1) {
+      pdf += `${String(offsets[index]).padStart(10, '0')} 00000 n \n`;
+    }
+    pdf += `trailer\n<< /Size ${objects.length} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+    return new Blob([pdf], { type: 'application/pdf' });
   }
 
   private async addEvidenceArchive(zip: unknown, context: PackageContext): Promise<void> {
@@ -1845,22 +2512,6 @@ ${sheetList.map((sheet) => `<Relationship Id="rId${sheet.id}" Type="http://schem
       }
       return evidence.filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object');
     });
-  }
-
-  private diagramLines(name: string, items: Record<string, unknown>[], relationships: Record<string, unknown>[], risks: Record<string, unknown>[]): string[] {
-    return [
-      'Generated from canonical discovery model.',
-      `Diagram: ${name.replace('.pdf', '').replace(/_/g, ' ')}`,
-      '',
-      'Key nodes:',
-      ...items.slice(0, 12).map((item) => `${this.readString(item, ['id'])}: ${this.readString(item, ['name'])} (${this.readString(item, ['type'])})`),
-      '',
-      'Key relationships:',
-      ...relationships.slice(0, 12).map((relationship) => `${this.readString(relationship, ['fromId', 'from_id', 'from'])} -> ${this.readString(relationship, ['toId', 'to_id', 'to'])} ${this.readString(relationship, ['type'])}`),
-      '',
-      'Failure / control notes:',
-      ...risks.slice(0, 8).map((risk) => `${this.readString(risk, ['id'])}: ${this.readString(risk, ['scenario', 'risk', 'name'])}`)
-    ];
   }
 
   private readString(record: Record<string, unknown>, keys: string[]): string {
