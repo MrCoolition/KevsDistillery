@@ -184,6 +184,7 @@ export class App {
   readonly apiHealth = signal<ApiHealth | null>(null);
   readonly apiError = signal('');
   readonly isSynthesizing = signal(false);
+  readonly analysisConfirmOpen = signal(false);
   readonly analysisStatus = signal('');
   readonly synthesisResult = signal<SynthesisResponse | null>(null);
   readonly synthesisError = signal('');
@@ -195,6 +196,7 @@ export class App {
   readonly stagedSources = signal<StagedSource[]>([]);
   readonly isExtractingSources = signal(false);
   private activeDownloadUrl = '';
+  private analysisConfirmResolver: ((confirmed: boolean) => void) | null = null;
 
   readonly navItems: NavItem[] = [
     { id: 'command', label: 'Command' },
@@ -471,8 +473,8 @@ export class App {
       return false;
     }
 
-    if (this.stagedSources().length > 0) {
-      const confirmed = window.confirm('Run Uncle Kev\'s analysis? This sends extracted evidence from the selected sources to your configured backend and OpenAI model.');
+    if (this.hasEvidenceForTransmission()) {
+      const confirmed = await this.confirmAnalysisTransmission();
       if (!confirmed) {
         return false;
       }
@@ -521,6 +523,37 @@ export class App {
       this.isSynthesizing.set(false);
       this.analysisStatus.set('');
     }
+  }
+
+  approveAnalysisRun(): void {
+    this.resolveAnalysisConfirmation(true);
+  }
+
+  cancelAnalysisRun(): void {
+    this.resolveAnalysisConfirmation(false);
+  }
+
+  private hasEvidenceForTransmission(): boolean {
+    const text = this.extractedText().trim();
+    return Boolean(text) && !text.startsWith('Choose files or a folder');
+  }
+
+  private confirmAnalysisTransmission(): Promise<boolean> {
+    if (this.analysisConfirmResolver) {
+      return Promise.resolve(false);
+    }
+
+    this.analysisConfirmOpen.set(true);
+    return new Promise((resolve) => {
+      this.analysisConfirmResolver = resolve;
+    });
+  }
+
+  private resolveAnalysisConfirmation(confirmed: boolean): void {
+    const resolver = this.analysisConfirmResolver;
+    this.analysisConfirmResolver = null;
+    this.analysisConfirmOpen.set(false);
+    resolver?.(confirmed);
   }
 
   private async pollSynthesis(responseId: string, payload: Record<string, unknown>): Promise<SynthesisResponse> {

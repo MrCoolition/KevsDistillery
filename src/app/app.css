@@ -772,6 +772,120 @@ meter {
   background: rgba(31, 191, 156, 0.13);
 }
 
+.confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(216, 139, 53, 0.22), transparent 36%),
+    rgba(5, 4, 3, 0.78);
+  padding: 22px;
+  backdrop-filter: blur(12px);
+}
+
+.confirm-sheet {
+  width: min(560px, 100%);
+  border: 1px solid rgba(216, 139, 53, 0.42);
+  border-radius: 10px;
+  background:
+    linear-gradient(135deg, rgba(216, 139, 53, 0.16), transparent 42%),
+    #120d0a;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.62);
+  padding: 22px;
+}
+
+.confirm-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.confirm-brand img {
+  width: 68px;
+  height: 68px;
+  border: 1px solid rgba(216, 139, 53, 0.5);
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: 0 0 34px rgba(216, 139, 53, 0.18);
+}
+
+.confirm-brand em,
+.confirm-brand strong {
+  display: block;
+}
+
+.confirm-brand em {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.confirm-brand strong {
+  margin-top: 4px;
+  color: var(--ink);
+  font-size: clamp(24px, 4vw, 34px);
+  line-height: 1;
+}
+
+.confirm-sheet p {
+  margin: 18px 0;
+  color: var(--ink-2);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.confirm-sheet dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 18px;
+}
+
+.confirm-sheet dl div {
+  min-height: 72px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  padding: 12px;
+}
+
+.confirm-sheet dt,
+.confirm-sheet dd {
+  margin: 0;
+}
+
+.confirm-sheet dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.confirm-sheet dd {
+  margin-top: 8px;
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.confirm-actions button {
+  min-height: 46px;
+  border: 0;
+  border-radius: 7px;
+  padding: 0 16px;
+  font-weight: 850;
+}
+
 .import-side {
   display: grid;
   align-content: start;

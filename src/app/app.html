@@ -316,7 +316,7 @@
                 </label>
 
                 <div class="import-actions">
-                  <button type="button" class="primary-action" [disabled]="isSynthesizing()" (click)="runSynthesis()">
+                  <button type="button" class="primary-action" [disabled]="isSynthesizing() || analysisConfirmOpen()" (click)="runSynthesis()">
                     {{ isSynthesizing() ? 'Analyzing...' : 'Run Analysis' }}
                   </button>
                   <button type="button" class="icon-action" (click)="refreshProductionState()">
@@ -696,4 +696,40 @@
       }
     </section>
   </div>
+
+  @if (analysisConfirmOpen()) {
+    <section class="confirm-backdrop" aria-labelledby="analysis-confirm-title" role="dialog" aria-modal="true">
+      <article class="confirm-sheet">
+        <div class="confirm-brand">
+          <img src="/assets/uncle-kevs-distillery.png" alt="">
+          <span>
+            <em>OpenAI still run</em>
+            <strong id="analysis-confirm-title">Send this evidence to the still?</strong>
+          </span>
+        </div>
+        <p>
+          Uncle Kev's Distillery will send the extracted evidence payload to your configured backend and OpenAI model,
+          then persist the completed canonical discovery model to Neon.
+        </p>
+        <dl>
+          <div>
+            <dt>Sources</dt>
+            <dd>{{ sourceStats().files }}</dd>
+          </div>
+          <div>
+            <dt>Evidence</dt>
+            <dd>{{ sourceStats().evidenceChars }}</dd>
+          </div>
+          <div>
+            <dt>Model</dt>
+            <dd>{{ apiHealth()?.model || ai.model }}</dd>
+          </div>
+        </dl>
+        <div class="confirm-actions">
+          <button type="button" class="icon-action" (click)="cancelAnalysisRun()">Cancel</button>
+          <button type="button" class="primary-action" (click)="approveAnalysisRun()">Run Analysis</button>
+        </div>
+      </article>
+    </section>
+  }
 </main>
