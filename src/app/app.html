@@ -1,0 +1,588 @@
+<main class="app-shell">
+  <header class="topbar">
+    <a class="brand" href="#top" aria-label="The Distillery home">
+      <span class="brand-mark">TD</span>
+      <span>
+        <strong>THE DISTILLERY</strong>
+        <em>Canonical discovery command center</em>
+      </span>
+    </a>
+
+    <nav class="nav-tabs" aria-label="Workspace sections">
+      @for (item of navItems; track item.id) {
+        <button
+          type="button"
+          [class.active]="activeView() === item.id"
+          (click)="selectView(item.id)"
+        >
+          {{ item.label }}
+        </button>
+      }
+    </nav>
+
+    <div class="top-actions">
+      <button type="button" class="icon-action" aria-label="Run ingestion" (click)="selectView('imports')">
+        <span aria-hidden="true">+</span>
+        Ingest
+      </button>
+      <button type="button" class="primary-action" aria-label="Generate action pack" (click)="selectView('reports')">
+        Generate Pack
+      </button>
+    </div>
+  </header>
+
+  <section class="hero-band" id="top">
+    <div class="hero-copy">
+      <p class="eyebrow">Snowflake migration discovery</p>
+      <h1>{{ model.processName }}</h1>
+      <p class="hero-text">{{ model.recommendation }}</p>
+      <div class="hero-meta" aria-label="Executive summary">
+        <span>{{ model.businessFunction }}</span>
+        <span>{{ model.criticalOutputs.length }} critical outputs</span>
+        <span>{{ totalExposure() }} base exposure</span>
+      </div>
+    </div>
+
+    <aside class="ai-panel" aria-label="OpenAI orchestration">
+      <div>
+        <span class="tiny-label">Synthesis engine</span>
+        <strong>{{ ai.model }}</strong>
+      </div>
+      <p>{{ ai.serverBoundary }}</p>
+      <div class="ai-steps">
+        @for (output of ai.contract.requiredOutputs; track output) {
+          <span>{{ output }}</span>
+        }
+      </div>
+    </aside>
+  </section>
+
+  <section class="metric-grid" aria-label="Discovery health">
+    <article>
+      <span>Risk</span>
+      <strong>{{ model.overallRiskRating }}</strong>
+      <small>top risks priced</small>
+    </article>
+    <article>
+      <span>Evidence Complete</span>
+      <strong>{{ completeItems() }}/{{ model.items.length }}</strong>
+      <small>canonical items finished</small>
+    </article>
+    <article>
+      <span>Confidence</span>
+      <strong>{{ averageConfidence() }}%</strong>
+      <small>weighted discovery signal</small>
+    </article>
+    <article>
+      <span>Pack Readiness</span>
+      <strong>{{ packageProgress() }}%</strong>
+      <small>graph-generated artifacts</small>
+    </article>
+  </section>
+
+  <div class="workspace-grid">
+    <aside class="left-rail" aria-label="Discovery intake">
+      <section class="rail-section">
+        <p class="section-kicker">Scope</p>
+        <h2>Ingest sources</h2>
+        <div class="source-list">
+          @for (source of model.systemsInScope; track source) {
+            <button type="button">{{ source }}</button>
+          }
+        </div>
+      </section>
+
+      <section class="rail-section">
+        <p class="section-kicker">Quality gates</p>
+        <div class="gate-list">
+          <span>Evidence</span>
+          <span>Confidence</span>
+          <span>Next action</span>
+          <span>Lineage</span>
+          <span>Dollar exposure</span>
+          <span>Owner</span>
+        </div>
+      </section>
+
+      <section class="rail-section">
+        <p class="section-kicker">Extraction</p>
+        @for (capability of model.extractionCapabilities; track capability.source) {
+          <div class="extractor">
+            <div>
+              <strong>{{ capability.source }}</strong>
+              <span>{{ capability.autoExtracts.length }} extractors</span>
+            </div>
+            <meter min="0" max="100" [value]="capability.readiness"></meter>
+          </div>
+        }
+      </section>
+    </aside>
+
+    <section class="content-surface">
+      @switch (activeView()) {
+        @case ('command') {
+          <section class="view-stack">
+            <div class="split-panel">
+              <article class="decision-panel">
+                <p class="section-kicker">Executive snapshot</p>
+                <h2>Decision brief</h2>
+                <dl class="brief-list">
+                  <div>
+                    <dt>Process</dt>
+                    <dd>{{ model.processName }}</dd>
+                  </div>
+                  <div>
+                    <dt>Decision</dt>
+                    <dd>{{ model.decisionRequired }}</dd>
+                  </div>
+                  <div>
+                    <dt>Exposure band</dt>
+                    <dd>
+                      {{ formatFullCurrency(model.estimatedDollarExposure.low) }}
+                      /
+                      {{ formatFullCurrency(model.estimatedDollarExposure.base) }}
+                      /
+                      {{ formatFullCurrency(model.estimatedDollarExposure.high) }}
+                    </dd>
+                  </div>
+                </dl>
+              </article>
+
+              <article class="risk-panel">
+                <p class="section-kicker">Top failure risks</p>
+                @for (risk of model.failureRisks; track risk.id) {
+                  <button type="button" class="risk-row">
+                    <span>{{ risk.id }}</span>
+                    <strong>{{ risk.scenario }}</strong>
+                    <em>{{ formatCurrency(risk.exposure.base) }}</em>
+                  </button>
+                }
+              </article>
+            </div>
+
+            <section class="confidence-strip" aria-label="Scope coverage and confidence">
+              @for (area of model.confidenceAreas; track area.area) {
+                <article>
+                  <div>
+                    <span>{{ area.area }}</span>
+                    <strong>{{ area.confidence }}%</strong>
+                  </div>
+                  <meter min="0" max="100" [value]="area.coverage"></meter>
+                  <p>{{ area.blocked }}</p>
+                </article>
+              }
+            </section>
+
+            <section class="narrative-panel">
+              <p class="section-kicker">Generated current state</p>
+              <h2>Operating model narrative</h2>
+              <p>
+                At 5:30 AM, ERP Billing exports daily invoice events to the shared drive. At 5:45 AM,
+                the Access refresh macro imports the CSV into CloseMart, executes saved query logic,
+                and feeds the revenue flash transformation. Finance Planning refreshes the macro-enabled
+                workbook for manual adjustments and margin bridge output. The controller runs a variance
+                check before the Daily Revenue Flash is released to leadership.
+              </p>
+            </section>
+          </section>
+        }
+
+        @case ('imports') {
+          <section class="import-workbench">
+            <div class="import-head">
+              <div>
+                <p class="section-kicker">Import forge</p>
+                <h2>Distill raw evidence into the canonical graph</h2>
+              </div>
+              <div class="status-cluster">
+                <span [class.ready]="apiHealth()?.openAIConfigured">OpenAI</span>
+                <span [class.ready]="apiHealth()?.database?.ready">Neon</span>
+                <span [class.ready]="isAuthReady()">Auth</span>
+              </div>
+            </div>
+
+            <section class="source-type-grid" aria-label="Import source types">
+              @for (source of importSources; track source.kind) {
+                <button
+                  type="button"
+                  [class.selected]="importSourceKind() === source.kind"
+                  (click)="updateImportSourceKind(source.kind)"
+                >
+                  <span>{{ source.label }}</span>
+                  <strong>{{ source.kind }}</strong>
+                  <em>{{ source.description }}</em>
+                </button>
+              }
+            </section>
+
+            <section class="import-console">
+              <article class="evidence-editor">
+                <div class="field-grid">
+                  <label>
+                    Source name
+                    <input
+                      type="text"
+                      [value]="importSourceName()"
+                      (input)="importSourceName.set($any($event.target).value)"
+                    >
+                  </label>
+                  <label>
+                    Admin token
+                    <input
+                      type="password"
+                      placeholder="Only needed if configured"
+                      [value]="adminToken()"
+                      (input)="updateAdminToken($any($event.target).value)"
+                    >
+                  </label>
+                </div>
+
+                <label>
+                  Known artifacts
+                  <textarea
+                    rows="4"
+                    [value]="knownArtifactsText()"
+                    (input)="knownArtifactsText.set($any($event.target).value)"
+                  ></textarea>
+                </label>
+
+                <label>
+                  Target outputs
+                  <textarea
+                    rows="4"
+                    [value]="targetOutputsText()"
+                    (input)="targetOutputsText.set($any($event.target).value)"
+                  ></textarea>
+                </label>
+
+                <label>
+                  Evidence payload
+                  <textarea
+                    class="evidence-payload"
+                    rows="12"
+                    [value]="extractedText()"
+                    (input)="extractedText.set($any($event.target).value)"
+                  ></textarea>
+                </label>
+
+                <div class="import-actions">
+                  <button type="button" class="primary-action" [disabled]="isSynthesizing()" (click)="runSynthesis()">
+                    {{ isSynthesizing() ? 'Distilling...' : 'Run gpt-5.5 Synthesis' }}
+                  </button>
+                  <button type="button" class="icon-action" (click)="refreshProductionState()">
+                    Refresh Status
+                  </button>
+                </div>
+
+                @if (synthesisError()) {
+                  <p class="error-line">{{ synthesisError() }}</p>
+                }
+              </article>
+
+              <aside class="import-side">
+                <section>
+                  <p class="section-kicker">Production status</p>
+                  @if (apiHealth(); as health) {
+                    <dl class="status-list">
+                      <div>
+                        <dt>Model</dt>
+                        <dd>{{ health.model }}</dd>
+                      </div>
+                      <div>
+                        <dt>OpenAI</dt>
+                        <dd>{{ health.openAIConfigured ? 'configured' : 'missing' }}</dd>
+                      </div>
+                      <div>
+                        <dt>Neon</dt>
+                        <dd>{{ health.database.ready ? 'schema ready' : 'not ready' }}</dd>
+                      </div>
+                      <div>
+                        <dt>Auth</dt>
+                        <dd>{{ health.authRequired ? 'token required' : 'open' }}</dd>
+                      </div>
+                    </dl>
+                    <button type="button" class="schema-button" (click)="applyNeonSchema()">
+                      Apply Neon Schema
+                    </button>
+                  } @else {
+                    <p>{{ apiError() || 'Checking API health...' }}</p>
+                  }
+                  @if (apiError()) {
+                    <p class="error-line">{{ apiError() }}</p>
+                  }
+                </section>
+
+                <section>
+                  <p class="section-kicker">Recent runs</p>
+                  <div class="run-list">
+                    @for (run of historicalRuns(); track run.id) {
+                      <button type="button">
+                        <strong>{{ run.source_name }}</strong>
+                        <span>{{ run.source_kind }} · {{ run.item_count }} items · {{ run.backlog_count }} actions</span>
+                      </button>
+                    } @empty {
+                      <p>No persisted runs yet.</p>
+                    }
+                  </div>
+                </section>
+              </aside>
+            </section>
+          </section>
+        }
+
+        @case ('model') {
+          <section class="view-stack">
+            <div class="search-row">
+              <label for="model-search">Canonical model</label>
+              <input
+                id="model-search"
+                type="search"
+                placeholder="Search items, owners, tags"
+                [value]="searchTerm()"
+                (input)="updateSearch($any($event.target).value)"
+              >
+            </div>
+
+            <div class="item-grid">
+              @for (item of filteredItems(); track item.id) {
+                <button
+                  type="button"
+                  class="item-card"
+                  [class.selected]="selectedItemId() === item.id"
+                  (click)="selectItem(item.id)"
+                >
+                  <span class="item-topline">
+                    <em>{{ item.id }}</em>
+                    <mark [class]="item.criticality">{{ item.criticality }}</mark>
+                  </span>
+                  <strong>{{ item.name }}</strong>
+                  <small>{{ item.type }} · {{ item.owner }}</small>
+                  <span class="evidence-score">{{ item.confidence }}% confidence</span>
+                </button>
+              }
+            </div>
+
+            <article class="detail-panel">
+              <div class="detail-heading">
+                <span>{{ selectedItem().id }} · {{ selectedItem().type }}</span>
+                <h2>{{ selectedItem().name }}</h2>
+              </div>
+              <div class="detail-grid">
+                <div>
+                  <p class="section-kicker">Business purpose</p>
+                  <p>{{ selectedItem().businessPurpose }}</p>
+                </div>
+                <div>
+                  <p class="section-kicker">Failure impact</p>
+                  <p>{{ selectedItem().failureImpact }}</p>
+                </div>
+                <div>
+                  <p class="section-kicker">Recommended action</p>
+                  <p>
+                    <strong>{{ selectedItem().recommendedAction.mode }}</strong>
+                    {{ selectedItem().recommendedAction.summary }}
+                  </p>
+                </div>
+                <div>
+                  <p class="section-kicker">Evidence</p>
+                  @for (evidence of selectedItem().evidence; track evidence.id) {
+                    <span class="evidence-pill">{{ evidence.id }} · {{ evidence.type }}</span>
+                  }
+                </div>
+              </div>
+            </article>
+          </section>
+        }
+
+        @case ('lineage') {
+          <section class="lineage-layout">
+            <article class="graph-canvas" aria-label="Recursive lineage graph">
+              @for (item of model.items; track item.id) {
+                <button
+                  type="button"
+                  class="graph-node"
+                  [class.selected]="selectedItemId() === item.id"
+                  [class.critical]="criticalityRank(item.criticality) > 3"
+                  (click)="selectItem(item.id)"
+                >
+                  <span>{{ item.id }}</span>
+                  <strong>{{ item.name }}</strong>
+                  <em>{{ item.type }}</em>
+                </button>
+              }
+            </article>
+
+            <aside class="lineage-side">
+              <p class="section-kicker">Recursive trace</p>
+              <h2>{{ selectedItem().name }}</h2>
+              <div class="trace-list">
+                @for (node of lineageTrace(); track node.id) {
+                  <div>
+                    <span>{{ node.id }}</span>
+                    <strong>{{ node.name }}</strong>
+                    <em>{{ node.status }} · {{ node.confidence }}%</em>
+                  </div>
+                }
+              </div>
+
+              <div class="relationship-columns">
+                <section>
+                  <h3>Upstream</h3>
+                  @for (node of selectedUpstream(); track node.id) {
+                    <button type="button" (click)="selectItem(node.id)">{{ node.id }} · {{ node.name }}</button>
+                  }
+                </section>
+                <section>
+                  <h3>Downstream</h3>
+                  @for (node of selectedDownstream(); track node.id) {
+                    <button type="button" (click)="selectItem(node.id)">{{ node.id }} · {{ node.name }}</button>
+                  }
+                </section>
+              </div>
+            </aside>
+          </section>
+        }
+
+        @case ('financial') {
+          <section class="view-stack">
+            <div class="exposure-band">
+              <div>
+                <span>Low</span>
+                <strong>{{ formatFullCurrency(model.estimatedDollarExposure.low) }}</strong>
+              </div>
+              <div>
+                <span>Base</span>
+                <strong>{{ formatFullCurrency(model.estimatedDollarExposure.base) }}</strong>
+              </div>
+              <div>
+                <span>High</span>
+                <strong>{{ formatFullCurrency(model.estimatedDollarExposure.high) }}</strong>
+              </div>
+            </div>
+
+            <section class="risk-table" aria-label="Financial scenarios">
+              <div class="table-head">
+                <span>Scenario</span>
+                <span>Output</span>
+                <span>Detection</span>
+                <span>Base exposure</span>
+              </div>
+              @for (risk of model.failureRisks; track risk.id) {
+                <article>
+                  <strong>{{ risk.scenario }}</strong>
+                  <span>{{ risk.impactedOutput }}</span>
+                  <span>{{ risk.detection }}</span>
+                  <em>{{ formatFullCurrency(risk.exposure.base) }}</em>
+                </article>
+              }
+            </section>
+          </section>
+        }
+
+        @case ('reports') {
+          <section class="reporting-dashboard">
+            <div class="report-head">
+              <div>
+                <p class="section-kicker">Artifact cockpit</p>
+                <h2>Discovery Action Pack</h2>
+                <p>
+                  A concise executive layer sits on top of the graph, lineage, controls,
+                  financial exposure, and action backlog.
+                </p>
+              </div>
+              <div class="report-scoreboard">
+                <span>
+                  <strong>{{ generatedCounts().items }}</strong>
+                  Items
+                </span>
+                <span>
+                  <strong>{{ generatedCounts().relationships }}</strong>
+                  Edges
+                </span>
+                <span>
+                  <strong>{{ generatedCounts().artifacts }}</strong>
+                  Artifacts
+                </span>
+                <span>
+                  <strong>{{ generatedCounts().backlog }}</strong>
+                  Actions
+                </span>
+              </div>
+            </div>
+
+            <section class="report-output">
+              <aside class="pack-tree">
+                <p class="section-kicker">Package tree</p>
+                <div>
+                  <strong>/Discovery_Action_Pack/</strong>
+                  @for (artifact of liveArtifacts(); track artifact.id) {
+                    <span>{{ artifact.name }}</span>
+                  }
+                </div>
+              </aside>
+
+              <article class="report-preview">
+                <p class="section-kicker">Report output</p>
+                @for (section of reportSections(); track section.title) {
+                  <section>
+                    <h3>{{ section.title }}</h3>
+                    <p>{{ section.body }}</p>
+                  </section>
+                }
+
+                @if (synthesisResult(); as result) {
+                  <section class="generated-json">
+                    <h3>Latest synthesis</h3>
+                    <p>Run {{ result.runId }} · {{ result.stored ? 'persisted to Neon' : 'not persisted' }}</p>
+                    <pre>{{ result.outputText }}</pre>
+                  </section>
+                }
+              </article>
+            </section>
+
+            <div class="pack-grid">
+              @for (artifact of liveArtifacts(); track artifact.id) {
+                <article class="artifact-card">
+                  <div>
+                    <span>{{ artifact.id }}</span>
+                    <strong>{{ artifact.name }}</strong>
+                  </div>
+                  <p>{{ artifact.purpose }}</p>
+                  <div class="progress-line" [style.--progress]="artifact.progress + '%'">
+                    <span></span>
+                  </div>
+                  <footer>
+                    <em>{{ artifact.audience }}</em>
+                    <strong>{{ artifact.progress }}%</strong>
+                  </footer>
+                </article>
+              }
+            </div>
+          </section>
+        }
+
+        @case ('backlog') {
+          <section class="view-stack">
+            <section class="backlog-list" aria-label="Remediation backlog">
+              @for (action of criticalBacklog(); track action.actionId) {
+                <article>
+                  <div class="action-priority">{{ action.priority }}</div>
+                  <div>
+                    <span>{{ action.actionId }} · {{ action.mode }}</span>
+                    <h2>{{ action.title }}</h2>
+                    <p>{{ action.acceptanceCriteria }}</p>
+                  </div>
+                  <aside>
+                    <strong>{{ action.owner }}</strong>
+                    <em>{{ action.dueDate }}</em>
+                    <small>Depends on {{ action.dependency }}</small>
+                  </aside>
+                </article>
+              }
+            </section>
+          </section>
+        }
+      }
+    </section>
+  </div>
+</main>
