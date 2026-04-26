@@ -145,6 +145,7 @@
   box-shadow: 0 14px 34px rgba(216, 139, 53, 0.18);
 }
 
+button:disabled,
 .top-actions button:disabled,
 .import-actions button:disabled {
   cursor: progress;
@@ -692,6 +693,16 @@ meter {
   border-left: 3px solid var(--rose);
   background: var(--rose-2);
   color: var(--rose);
+  padding: 12px;
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.success-line {
+  margin: 14px 0 0;
+  border-left: 3px solid #26c7a8;
+  background: rgba(38, 199, 168, 0.14);
+  color: var(--ink);
   padding: 12px;
   font-size: 13px;
   font-weight: 760;

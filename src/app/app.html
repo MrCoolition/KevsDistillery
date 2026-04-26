@@ -27,8 +27,14 @@
         <span aria-hidden="true">+</span>
         Mash In
       </button>
-      <button type="button" class="primary-action" aria-label="Generate action pack" (click)="selectView('reports')">
-        Generate Action Pack
+      <button
+        type="button"
+        class="primary-action"
+        aria-label="Generate action pack"
+        [disabled]="isSynthesizing() || isGeneratingPack()"
+        (click)="generateActionPack()"
+      >
+        {{ isGeneratingPack() ? 'Packaging...' : 'Generate Action Pack' }}
       </button>
     </div>
   </header>
@@ -337,6 +343,12 @@
                 @if (synthesisError()) {
                   <p class="error-line">{{ synthesisError() }}</p>
                 }
+                @if (packMessage()) {
+                  <p class="success-line">{{ packMessage() }}</p>
+                }
+                @if (packError()) {
+                  <p class="error-line">{{ packError() }}</p>
+                }
               </article>
 
               <aside class="import-side">
@@ -546,6 +558,14 @@
                   controls, business exposure, artifacts, and the engineering backlog.
                 </p>
               </div>
+              <button
+                type="button"
+                class="primary-action"
+                [disabled]="isSynthesizing() || isGeneratingPack()"
+                (click)="generateActionPack()"
+              >
+                {{ isGeneratingPack() ? 'Packaging...' : 'Download Discovery Action Pack' }}
+              </button>
               <div class="report-scoreboard">
                 <span>
                   <strong>{{ generatedCounts().items }}</strong>
@@ -565,6 +585,13 @@
                 </span>
               </div>
             </div>
+
+            @if (packMessage()) {
+              <p class="success-line">{{ packMessage() }}</p>
+            }
+            @if (packError()) {
+              <p class="error-line">{{ packError() }}</p>
+            }
 
             <section class="report-output">
               <aside class="pack-tree">

@@ -8,7 +8,7 @@ function buildInstructions(sourceKind, sourceName) {
     'Return one compact valid JSON object only. No markdown.',
     'Analyze retrieved evidence, not just filenames. Mark weak evidence as blocked with the smallest source needed to finish.',
     'Required top-level keys: processName, businessFunction, recommendation, decisionRequired, systemsInScope, criticalOutputs, overallRiskRating, estimatedDollarExposure, executiveBrief, reportSections, items, relationships, artifacts, backlog, evidenceIndex, lineageNodes, lineageEdges, failureRisks, openQuestions.',
-    'reportSections: exactly 6 concise sections named Executive Snapshot, Scope and Evidence, Current-State Operating Model, Lineage and Business Logic, Controls and Failure Modes, Action Plan. Body under 45 words. Include confidence and evidenceIds.',
+    'reportSections: exactly 6 concise sections. Each section MUST use the title property with one of these exact titles in order: Executive Snapshot, Scope and Evidence, Current-State Operating Model, Lineage and Business Logic, Controls and Failure Modes, Action Plan. Never use generic names like Analysis Section. Body under 45 words. Include confidence and evidenceIds.',
     'items: max 6 high-signal nodes. Each item requires id, type, name, businessPurpose, owner, evidence, confidence, criticality, upstream, downstream, failureImpact, dollarExposure, recommendedAction, status.',
     'recommendedAction requires mode, summary, owner, priority, acceptanceCriteria. dollarExposure requires low, base, high, assumptions.',
     'relationships max 8. backlog max 5. evidenceIndex max 4. openQuestions max 3. Use one evidence object per item.',

@@ -1853,7 +1853,7 @@
           return delta.reportSections
             .filter((section) => section?.title || section?.body)
             .map((section, index) => ({
-              title: section.title || `Analysis Section ${index + 1}`,
+              title: section.title || `Report Section ${index + 1}`,
               body: section.body || 'No narrative returned for this section.',
               confidence: typeof section.confidence === 'number' ? section.confidence : null,
               evidenceIds: Array.isArray(section.evidenceIds) ? section.evidenceIds : []

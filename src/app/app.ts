@@ -52,6 +52,8 @@ interface SynthesisResponse {
     businessFunction?: string;
     recommendation?: string;
     decisionRequired?: string;
+    systemsInScope?: string[];
+    criticalOutputs?: string[];
     overallRiskRating?: string;
     estimatedDollarExposure?: Record<string, unknown>;
     executiveBrief?: Record<string, unknown>;
@@ -73,9 +75,18 @@ interface SynthesisResponse {
 
 interface ReportSection {
   title?: string;
+  heading?: string;
+  name?: string;
+  section?: string;
+  sectionTitle?: string;
   body?: string;
+  content?: string;
+  summary?: string;
+  narrative?: string;
   confidence?: number;
   evidenceIds?: string[];
+  evidence_ids?: string[];
+  evidence?: unknown;
 }
 
 interface HistoricalRun {
@@ -109,6 +120,21 @@ interface StagedSource {
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class App {
+  private readonly reportSectionTitles = [
+    'Executive Snapshot',
+    'Scope, Coverage, and Confidence',
+    'Business Mission of the Process',
+    'Current-State Operating Model',
+    'System and Artifact Landscape',
+    'Data Flow and Process Flow Summary',
+    'Transformations and Business Logic',
+    'Recursive Lineage and Source-of-Truth Assessment',
+    'Controls, Exceptions, and Failure Modes',
+    'Financial Impact and Business Exposure',
+    'Recommendations and Action Plan',
+    'Open Questions and Decisions Needed'
+  ];
+
   readonly model = discoveryModel;
   readonly ai = aiReadiness;
   readonly activeView = signal<ViewId>('imports');
@@ -124,6 +150,9 @@ export class App {
   readonly isSynthesizing = signal(false);
   readonly synthesisResult = signal<SynthesisResponse | null>(null);
   readonly synthesisError = signal('');
+  readonly packMessage = signal('');
+  readonly packError = signal('');
+  readonly isGeneratingPack = signal(false);
   readonly historicalRuns = signal<HistoricalRun[]>([]);
   readonly stagedSources = signal<StagedSource[]>([]);
   readonly isExtractingSources = signal(false);
@@ -309,18 +338,6 @@ export class App {
   });
 
   readonly reportSections = computed(() => {
-    const generated = this.synthesisResult()?.canonicalDelta?.reportSections;
-    if (generated?.length) {
-      return generated
-        .filter((section) => section?.title || section?.body)
-        .map((section, index) => ({
-          title: section.title || `Analysis Section ${index + 1}`,
-          body: section.body || 'No narrative returned for this section.',
-          confidence: typeof section.confidence === 'number' ? section.confidence : null,
-          evidenceIds: Array.isArray(section.evidenceIds) ? section.evidenceIds : []
-        }));
-    }
-
     const delta = this.synthesisResult()?.canonicalDelta;
     if (delta) {
       return this.sectionsFromCanonicalDelta(delta);
@@ -406,21 +423,23 @@ export class App {
     }
   }
 
-  async runSynthesis(): Promise<void> {
+  async runSynthesis(): Promise<boolean> {
     if (!this.extractedText().trim()) {
       this.synthesisError.set('No evidence payload is staged. Choose files or paste evidence before running analysis.');
-      return;
+      return false;
     }
 
     if (this.stagedSources().length > 0) {
       const confirmed = window.confirm('Run Uncle Kev\'s analysis? This sends extracted evidence from the selected sources to your configured backend and OpenAI model.');
       if (!confirmed) {
-        return;
+        return false;
       }
     }
 
     this.isSynthesizing.set(true);
     this.synthesisError.set('');
+    this.packError.set('');
+    this.packMessage.set('');
     this.synthesisResult.set(null);
 
     try {
@@ -444,10 +463,42 @@ export class App {
       this.synthesisResult.set(body);
       this.activeView.set('reports');
       await this.loadRuns();
+      return true;
     } catch (error) {
       this.synthesisError.set(error instanceof Error ? error.message : 'Synthesis failed.');
+      return false;
     } finally {
       this.isSynthesizing.set(false);
+    }
+  }
+
+  async generateActionPack(): Promise<void> {
+    this.packError.set('');
+    this.packMessage.set('');
+
+    if (!this.synthesisResult()) {
+      const hasEvidence = this.extractedText().trim() && !this.extractedText().startsWith('Choose files or a folder');
+      if (!hasEvidence) {
+        this.activeView.set('imports');
+        this.synthesisError.set('Stage sources first. The Discovery Action Pack is generated after OpenAI analysis produces the canonical model.');
+        return;
+      }
+
+      const analyzed = await this.runSynthesis();
+      if (!analyzed) {
+        return;
+      }
+    }
+
+    this.isGeneratingPack.set(true);
+    try {
+      await this.downloadDiscoveryActionPack();
+      this.packMessage.set('Discovery_Action_Pack.zip generated from the current canonical model.');
+      this.activeView.set('reports');
+    } catch (error) {
+      this.packError.set(error instanceof Error ? error.message : 'Could not generate the Discovery Action Pack.');
+    } finally {
+      this.isGeneratingPack.set(false);
     }
   }
 
@@ -494,6 +545,8 @@ export class App {
     this.extractedText.set('Choose files or a folder above. Extracted evidence will collect here before the still runs.');
     this.synthesisResult.set(null);
     this.synthesisError.set('');
+    this.packError.set('');
+    this.packMessage.set('');
     if (fileInput) {
       fileInput.value = '';
     }
@@ -797,26 +850,507 @@ export class App {
   }
 
   private sectionsFromCanonicalDelta(delta: NonNullable<SynthesisResponse['canonicalDelta']>) {
+    const items = this.records(delta.items);
+    const relationships = this.records(delta.relationships);
+    const artifacts = this.records(delta.artifacts);
+    const backlog = this.records(delta.backlog);
+    const evidenceIndex = this.records((delta as Record<string, unknown>)['evidenceIndex']);
+    const failureRisks = this.records((delta as Record<string, unknown>)['failureRisks']);
+    const openQuestions = this.records((delta as Record<string, unknown>)['openQuestions']);
+    const systems = delta.systemsInScope?.length ? delta.systemsInScope.join(', ') : this.knownArtifacts().join(', ');
+    const criticalOutputs = delta.criticalOutputs?.length ? delta.criticalOutputs.join(', ') : this.targetOutputs().join(', ');
+
     return [
       {
         title: 'Executive Snapshot',
-        body: `${delta.processName || this.importSourceName()} was analyzed for ${delta.businessFunction || 'data discovery and migration readiness'}. ${delta.recommendation || 'Review generated items, lineage, artifacts, and actions.'}`,
+        body: `${delta.processName || this.importSourceName()} was analyzed for ${delta.businessFunction || 'data discovery and migration readiness'}. Risk is ${delta.overallRiskRating || 'unscored'}. ${this.asText(delta.recommendation) || 'Review generated items, lineage, artifacts, and actions.'}`,
         confidence: null,
         evidenceIds: []
       },
       {
         title: 'Scope Coverage and Confidence',
-        body: `${delta.items?.length || 0} canonical items, ${delta.relationships?.length || 0} relationships, ${delta.artifacts?.length || 0} artifacts, and ${delta.backlog?.length || 0} backlog actions were generated from the submitted evidence.`,
+        body: `${items.length} canonical items, ${relationships.length} relationships, ${artifacts.length} artifacts, ${backlog.length} backlog actions, and ${evidenceIndex.length} evidence records were generated from submitted evidence. Systems in scope: ${systems || 'not specified'}.`,
         confidence: null,
         evidenceIds: []
       },
       {
-        title: 'Decisions Needed',
-        body: delta.decisionRequired || 'Confirm ownership, unresolved evidence gaps, and migration action priority.',
+        title: 'Business Mission of the Process',
+        body: `${delta.businessFunction || 'The submitted sources support data discovery and modernization planning.'} Critical outputs: ${criticalOutputs || 'not specified'}.`,
+        confidence: null,
+        evidenceIds: []
+      },
+      {
+        title: 'Current-State Operating Model',
+        body: `Current state is represented by ${items.length} nodes and ${relationships.length} edges. The strongest discovered objects are ${items.slice(0, 4).map((item) => this.readString(item, ['name'])).filter(Boolean).join(', ') || 'not yet named'}.`,
+        confidence: null,
+        evidenceIds: []
+      },
+      {
+        title: 'System and Artifact Landscape',
+        body: `Artifacts in scope: ${systems || 'source files and generated canonical evidence'}. Generated outputs cover executive reporting, current-state documentation, workbook inventory, diagrams, impact model, backlog, evidence archive, and manifest.`,
+        confidence: null,
+        evidenceIds: []
+      },
+      {
+        title: 'Data Flow and Process Flow Summary',
+        body: relationships.length
+          ? relationships.slice(0, 4).map((relationship) => `${this.readString(relationship, ['fromId', 'from_id', 'from'])} to ${this.readString(relationship, ['toId', 'to_id', 'to'])}`).join('; ')
+          : 'Data flow requires additional source metadata before edges can be confirmed.',
+        confidence: null,
+        evidenceIds: []
+      },
+      {
+        title: 'Transformations and Business Logic',
+        body: items.filter((item) => /query|macro|vba|sql|transform|rule|report/i.test(JSON.stringify(item))).slice(0, 4).map((item) => this.readString(item, ['name'])).filter(Boolean).join(', ') || 'Transformation logic requires query, macro, VBA, formula, or SQL exports to finish.',
+        confidence: null,
+        evidenceIds: []
+      },
+      {
+        title: 'Recursive Lineage and Source-of-Truth Assessment',
+        body: `Lineage has ${relationships.length} discovered relationships. Branches without exported object metadata remain inferred until terminal source systems, manual entry points, or approved blockers are documented.`,
+        confidence: null,
+        evidenceIds: []
+      },
+      {
+        title: 'Controls, Exceptions, and Failure Modes',
+        body: failureRisks.length
+          ? failureRisks.slice(0, 3).map((risk) => this.readString(risk, ['scenario', 'risk', 'name'])).join('; ')
+          : 'No complete control log was supplied. Control and exception evidence should be collected for every critical output.',
+        confidence: null,
+        evidenceIds: []
+      },
+      {
+        title: 'Financial Impact and Business Exposure',
+        body: this.asText(delta.estimatedDollarExposure) || 'Dollar exposure needs business volume, unit value, recovery labor, SLA, penalty, customer, and compliance inputs before it can be priced.',
+        confidence: null,
+        evidenceIds: []
+      },
+      {
+        title: 'Recommendations and Action Plan',
+        body: backlog.length
+          ? backlog.slice(0, 4).map((action) => this.readString(action, ['title', 'action', 'summary'])).join('; ')
+          : this.asText(delta.recommendation) || 'Confirm evidence gaps, export native metadata, and prioritize migration actions.',
+        confidence: null,
+        evidenceIds: []
+      },
+      {
+        title: 'Open Questions and Decisions Needed',
+        body: openQuestions.length
+          ? openQuestions.slice(0, 4).map((question) => this.readString(question, ['question', 'text', 'decision'])).join('; ')
+          : delta.decisionRequired || 'Confirm ownership, unresolved evidence gaps, and migration action priority.',
         confidence: null,
         evidenceIds: []
       }
     ];
+  }
+
+  private normalizeReportSection(section: ReportSection, index: number) {
+    const record = section as Record<string, unknown>;
+    const rawTitle = this.readString(record, ['title', 'heading', 'sectionTitle', 'section', 'name']);
+    const fallbackTitle = this.reportSectionTitles[index] || `Report Section ${index + 1}`;
+    const title = !rawTitle || /^analysis section\b/i.test(rawTitle) ? fallbackTitle : rawTitle;
+    const body = this.readString(record, ['body', 'narrative', 'summary', 'content', 'text']) || 'No narrative returned for this section.';
+    const confidence = this.readNumber(record, ['confidence', 'confidenceScore']);
+    const evidenceIds = this.readStringArray(record, ['evidenceIds', 'evidence_ids', 'evidence']);
+    return {
+      title,
+      body,
+      confidence,
+      evidenceIds
+    };
+  }
+
+  private async downloadDiscoveryActionPack(): Promise<void> {
+    const result = this.synthesisResult();
+    const delta = result?.canonicalDelta;
+    if (!delta) {
+      throw new Error('No canonical model is available yet. Run analysis first.');
+    }
+
+    const { default: JSZip } = await import('jszip');
+    const zip = new JSZip();
+    const root = zip.folder('Discovery_Action_Pack');
+    if (!root) {
+      throw new Error('Could not create package root.');
+    }
+
+    const items = this.records(delta.items);
+    const relationships = this.records(delta.relationships);
+    const artifacts = this.records(delta.artifacts);
+    const backlog = this.records(delta.backlog);
+    const evidenceIndex = this.records((delta as Record<string, unknown>)['evidenceIndex']);
+    const lineageNodes = this.records((delta as Record<string, unknown>)['lineageNodes']).length
+      ? this.records((delta as Record<string, unknown>)['lineageNodes'])
+      : items.map((item) => ({
+        node_id: this.readString(item, ['id', 'item_id']),
+        node_type: this.readString(item, ['type']),
+        name: this.readString(item, ['name']),
+        criticality: this.readString(item, ['criticality']),
+        owner: this.readString(item, ['owner']),
+        confidence: this.readNumber(item, ['confidence'])
+      }));
+    const lineageEdges = this.records((delta as Record<string, unknown>)['lineageEdges']).length
+      ? this.records((delta as Record<string, unknown>)['lineageEdges'])
+      : relationships;
+    const failureRisks = this.records((delta as Record<string, unknown>)['failureRisks']);
+    const openQuestions = this.records((delta as Record<string, unknown>)['openQuestions']);
+    const sections = this.reportSections();
+    const manifest = {
+      packageName: 'Discovery_Action_Pack',
+      generatedAt: new Date().toISOString(),
+      runId: result?.runId || '',
+      model: result?.model || '',
+      sourceKind: this.importSourceKind(),
+      sourceName: this.importSourceName(),
+      storedInNeon: Boolean(result?.stored),
+      counts: this.generatedCounts(),
+      artifacts: this.liveArtifacts().map((artifact) => artifact.name)
+    };
+
+    root.file('01_Executive_Decision_Brief.pdf', this.buildPdf('Executive Decision Brief', [
+      `Process: ${delta.processName || this.importSourceName()}`,
+      `Business function: ${delta.businessFunction || 'Data discovery and migration readiness'}`,
+      `Risk rating: ${delta.overallRiskRating || 'not specified'}`,
+      `Recommendation: ${this.asText(delta.recommendation) || 'Review generated action plan.'}`,
+      `Decision required: ${delta.decisionRequired || 'Confirm owners, blockers, and migration priority.'}`,
+      ...sections.slice(0, 2).flatMap((section) => [section.title, section.body])
+    ]));
+
+    root.file('02_Current_State_Architecture_Report.pdf', this.buildPdf('Current-State Architecture Report', [
+      ...sections.flatMap((section) => [section.title, section.body]),
+      'Canonical Items',
+      ...items.map((item) => `${this.readString(item, ['id'])} ${this.readString(item, ['name'])}: ${this.readString(item, ['businessPurpose'])}`),
+      'Relationships',
+      ...relationships.map((relationship) => `${this.readString(relationship, ['fromId', 'from_id', 'from'])} -> ${this.readString(relationship, ['toId', 'to_id', 'to'])}: ${this.readString(relationship, ['type', 'relationship_type'])}`)
+    ]));
+
+    root.file('03_Technical_Discovery_Workbook.xlsx', await this.buildWorkbook([
+      { name: '00_Manifest', rows: this.objectRows(manifest) },
+      { name: '01_Items', rows: this.tableRows(items) },
+      { name: '08_Lineage_Nodes', rows: this.tableRows(lineageNodes) },
+      { name: '09_Lineage_Edges', rows: this.tableRows(lineageEdges) },
+      { name: '17_Actions', rows: this.tableRows(backlog) },
+      { name: '18_Open_Questions', rows: this.tableRows(openQuestions) },
+      { name: '19_Evidence_Index', rows: this.tableRows(evidenceIndex) }
+    ]));
+
+    const docs = root.folder('04_Auto_Documentation_Pack');
+    docs?.file('04a_System_Inventory.csv', this.toCsv(items.filter((item) => /system|database|file|workbook|access/i.test(this.readString(item, ['type', 'name'])))));
+    docs?.file('04b_Object_Inventory.csv', this.toCsv(items));
+    docs?.file('04c_Process_Steps.csv', this.toCsv(this.records((delta as Record<string, unknown>)['processSteps']).length ? this.records((delta as Record<string, unknown>)['processSteps']) : items));
+    docs?.file('04d_Lineage_Nodes.csv', this.toCsv(lineageNodes));
+    docs?.file('04e_Lineage_Edges.csv', this.toCsv(lineageEdges));
+    docs?.file('04f_Transformations_Rules.csv', this.toCsv(items.filter((item) => /query|macro|transform|vba|sql|power/i.test(this.readString(item, ['type', 'name', 'businessPurpose'])))));
+    docs?.file('04g_Controls_Exceptions.csv', this.toCsv(failureRisks.length ? failureRisks : backlog));
+    docs?.file('04h_Security_Access.csv', this.toCsv(items.filter((item) => /security|access|credential|pii|phi|privacy/i.test(JSON.stringify(item)))));
+
+    const diagrams = root.folder('05_Diagram_Pack');
+    const diagramNames = [
+      'D01_Executive_Value_Stream.pdf',
+      'D02_System_Context_Diagram.pdf',
+      'D03_Business_Process_Swimlane.pdf',
+      'D04_Detailed_Data_Flow.pdf',
+      'D05_Recursive_Lineage_Graph.pdf',
+      'D06_Object_Dependency_Map.pdf',
+      'D07_Control_And_Exception_Map.pdf',
+      'D08_Failure_Impact_Map.pdf',
+      'D09_Schedule_And_Refresh_Timeline.pdf'
+    ];
+    for (const diagramName of diagramNames) {
+      diagrams?.file(diagramName, this.buildPdf(diagramName.replace('.pdf', '').replace(/_/g, ' '), this.diagramLines(diagramName, items, relationships, failureRisks)));
+    }
+
+    root.file('06_Financial_Impact_Model.xlsx', await this.buildWorkbook([
+      { name: 'Scenarios', rows: this.tableRows(failureRisks) },
+      { name: 'Exposure', rows: this.objectRows(delta.estimatedDollarExposure || {}) },
+      { name: 'Assumptions', rows: [['Assumption'], [this.asText(delta.estimatedDollarExposure) || 'Pricing requires volume, unit value, SLA, labor, penalty, and customer impact evidence.']] }
+    ]));
+
+    root.file('07_Action_Backlog.csv', this.toCsv(backlog));
+    const evidence = root.folder('08_Evidence_Archive');
+    evidence?.folder('Document_Extracts')?.file('Extracted_Evidence.txt', this.extractedText());
+    evidence?.folder('Document_Extracts')?.file('Canonical_Model.json', JSON.stringify(delta, null, 2));
+    evidence?.file('Evidence_Index.csv', this.toCsv(evidenceIndex.length ? evidenceIndex : this.evidenceFromItems(items)));
+    root.file('09_Metadata_Manifest.json', JSON.stringify(manifest, null, 2));
+
+    const blob = await zip.generateAsync({ type: 'blob' });
+    this.downloadBlob(blob, `Discovery_Action_Pack_${this.safeFilename(this.importSourceName()) || 'run'}.zip`);
+  }
+
+  private buildPdf(title: string, lines: string[]): Blob {
+    const safeLines = [title, '', ...lines]
+      .flatMap((line) => this.wrapText(this.stripControlChars(this.asText(line)), 92))
+      .slice(0, 360);
+    const pages = this.chunk(safeLines, 46);
+    const objects: string[] = [];
+    objects[1] = '<< /Type /Catalog /Pages 2 0 R >>';
+    objects[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>';
+    const kids: string[] = [];
+
+    pages.forEach((pageLines, index) => {
+      const pageObject = 4 + index * 2;
+      const contentObject = pageObject + 1;
+      kids.push(`${pageObject} 0 R`);
+      const content = [
+        'BT',
+        '/F1 10 Tf',
+        '14 TL',
+        '50 770 Td',
+        ...pageLines.map((line) => `(${this.escapePdf(line)}) Tj T*`),
+        'ET'
+      ].join('\n');
+      objects[pageObject] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents ${contentObject} 0 R >>`;
+      objects[contentObject] = `<< /Length ${content.length} >>\nstream\n${content}\nendstream`;
+    });
+
+    objects[2] = `<< /Type /Pages /Kids [${kids.join(' ')}] /Count ${pages.length} >>`;
+
+    let pdf = '%PDF-1.4\n';
+    const offsets = [0];
+    for (let index = 1; index < objects.length; index += 1) {
+      offsets[index] = pdf.length;
+      pdf += `${index} 0 obj\n${objects[index]}\nendobj\n`;
+    }
+    const xrefOffset = pdf.length;
+    pdf += `xref\n0 ${objects.length}\n0000000000 65535 f \n`;
+    for (let index = 1; index < objects.length; index += 1) {
+      pdf += `${String(offsets[index]).padStart(10, '0')} 00000 n \n`;
+    }
+    pdf += `trailer\n<< /Size ${objects.length} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+    return new Blob([pdf], { type: 'application/pdf' });
+  }
+
+  private async buildWorkbook(sheets: Array<{ name: string; rows: string[][] }>): Promise<Blob> {
+    const { default: JSZip } = await import('jszip');
+    const zip = new JSZip();
+    const sheetList = sheets.map((sheet, index) => ({ ...sheet, id: index + 1, safeName: sheet.name.slice(0, 31) || `Sheet${index + 1}` }));
+
+    zip.file('[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+${sheetList.map((sheet) => `<Override PartName="/xl/worksheets/sheet${sheet.id}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}
+</Types>`);
+    zip.folder('_rels')?.file('.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`);
+    zip.folder('xl')?.file('workbook.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<sheets>${sheetList.map((sheet) => `<sheet name="${this.escapeXml(sheet.safeName)}" sheetId="${sheet.id}" r:id="rId${sheet.id}"/>`).join('')}</sheets>
+</workbook>`);
+    zip.folder('xl')?.folder('_rels')?.file('workbook.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+${sheetList.map((sheet) => `<Relationship Id="rId${sheet.id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${sheet.id}.xml"/>`).join('')}
+</Relationships>`);
+    const worksheets = zip.folder('xl')?.folder('worksheets');
+    sheetList.forEach((sheet) => {
+      worksheets?.file(`sheet${sheet.id}.xml`, this.sheetXml(sheet.rows));
+    });
+
+    return zip.generateAsync({
+      type: 'blob',
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    });
+  }
+
+  private sheetXml(rows: string[][]): string {
+    const body = rows.map((row, rowIndex) => {
+      const cells = row.map((cell, columnIndex) => {
+        const ref = `${this.columnName(columnIndex)}${rowIndex + 1}`;
+        return `<c r="${ref}" t="inlineStr"><is><t>${this.escapeXml(cell)}</t></is></c>`;
+      }).join('');
+      return `<row r="${rowIndex + 1}">${cells}</row>`;
+    }).join('');
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${body}</sheetData></worksheet>`;
+  }
+
+  private objectRows(value: unknown): string[][] {
+    const record = this.asRecord(value);
+    const rows = [['Field', 'Value']];
+    Object.keys(record).forEach((key) => rows.push([key, this.asText(record[key])]));
+    return rows;
+  }
+
+  private tableRows(records: Record<string, unknown>[]): string[][] {
+    const columns = this.columnsFor(records);
+    return [columns, ...records.map((record) => columns.map((column) => this.asText(record[column])))];
+  }
+
+  private toCsv(records: Record<string, unknown>[]): string {
+    const rows = this.tableRows(records);
+    return rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\r\n');
+  }
+
+  private columnsFor(records: Record<string, unknown>[]): string[] {
+    const columns = new Set<string>();
+    records.forEach((record) => Object.keys(record).forEach((key) => columns.add(key)));
+    return [...columns].length ? [...columns] : ['status'];
+  }
+
+  private records(value: unknown): Record<string, unknown>[] {
+    return Array.isArray(value)
+      ? value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object').map((item) => item as Record<string, unknown>)
+      : [];
+  }
+
+  private evidenceFromItems(items: Record<string, unknown>[]): Record<string, unknown>[] {
+    return items.flatMap((item) => {
+      const evidence = item['evidence'];
+      if (!Array.isArray(evidence)) {
+        return [];
+      }
+      return evidence.filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object');
+    });
+  }
+
+  private diagramLines(name: string, items: Record<string, unknown>[], relationships: Record<string, unknown>[], risks: Record<string, unknown>[]): string[] {
+    return [
+      'Generated from canonical discovery model.',
+      `Diagram: ${name.replace('.pdf', '').replace(/_/g, ' ')}`,
+      '',
+      'Key nodes:',
+      ...items.slice(0, 12).map((item) => `${this.readString(item, ['id'])}: ${this.readString(item, ['name'])} (${this.readString(item, ['type'])})`),
+      '',
+      'Key relationships:',
+      ...relationships.slice(0, 12).map((relationship) => `${this.readString(relationship, ['fromId', 'from_id', 'from'])} -> ${this.readString(relationship, ['toId', 'to_id', 'to'])} ${this.readString(relationship, ['type'])}`),
+      '',
+      'Failure / control notes:',
+      ...risks.slice(0, 8).map((risk) => `${this.readString(risk, ['id'])}: ${this.readString(risk, ['scenario', 'risk', 'name'])}`)
+    ];
+  }
+
+  private readString(record: Record<string, unknown>, keys: string[]): string {
+    for (const key of keys) {
+      const value = record[key];
+      if (typeof value === 'string' && value.trim()) {
+        return value.trim();
+      }
+      if (typeof value === 'number') {
+        return String(value);
+      }
+    }
+    return '';
+  }
+
+  private readNumber(record: Record<string, unknown>, keys: string[]): number | null {
+    for (const key of keys) {
+      const value = record[key];
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+      }
+      if (typeof value === 'string' && Number.isFinite(Number(value))) {
+        return Number(value);
+      }
+    }
+    return null;
+  }
+
+  private readStringArray(record: Record<string, unknown>, keys: string[]): string[] {
+    for (const key of keys) {
+      const value = record[key];
+      if (Array.isArray(value)) {
+        return value
+          .map((item) => {
+            if (typeof item === 'string') {
+              return item;
+            }
+            if (item && typeof item === 'object') {
+              return this.readString(item as Record<string, unknown>, ['id', 'evidenceId', 'evidence_id', 'name']);
+            }
+            return '';
+          })
+          .filter(Boolean);
+      }
+      if (typeof value === 'string' && value.trim()) {
+        return value.split(/\s*,\s*/).filter(Boolean);
+      }
+    }
+    return [];
+  }
+
+  private asRecord(value: unknown): Record<string, unknown> {
+    return value && typeof value === 'object' ? value as Record<string, unknown> : {};
+  }
+
+  private asText(value: unknown): string {
+    if (value === null || value === undefined) {
+      return '';
+    }
+    if (typeof value === 'string') {
+      return value;
+    }
+    if (typeof value === 'number' || typeof value === 'boolean') {
+      return String(value);
+    }
+    return JSON.stringify(value);
+  }
+
+  private wrapText(value: string, width: number): string[] {
+    const words = value.split(/\s+/).filter(Boolean);
+    const lines: string[] = [];
+    let current = '';
+    for (const word of words) {
+      if (`${current} ${word}`.trim().length > width) {
+        lines.push(current);
+        current = word;
+      } else {
+        current = `${current} ${word}`.trim();
+      }
+    }
+    if (current) {
+      lines.push(current);
+    }
+    return lines.length ? lines : [''];
+  }
+
+  private chunk<T>(values: T[], size: number): T[][] {
+    const chunks: T[][] = [];
+    for (let index = 0; index < values.length; index += size) {
+      chunks.push(values.slice(index, index + size));
+    }
+    return chunks.length ? chunks : [[]];
+  }
+
+  private escapePdf(value: string): string {
+    return value.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+  }
+
+  private escapeXml(value: string): string {
+    return this.stripControlChars(String(value))
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  private stripControlChars(value: string): string {
+    return value.replace(/[^\x20-\x7E]/g, ' ');
+  }
+
+  private columnName(index: number): string {
+    let name = '';
+    let current = index + 1;
+    while (current > 0) {
+      const remainder = (current - 1) % 26;
+      name = String.fromCharCode(65 + remainder) + name;
+      current = Math.floor((current - 1) / 26);
+    }
+    return name;
+  }
+
+  private safeFilename(value: string): string {
+    return value.replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 80);
+  }
+
+  private downloadBlob(blob: Blob, filename: string): void {
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    URL.revokeObjectURL(url);
   }
 
   private accessStringScore(value: string): number {
