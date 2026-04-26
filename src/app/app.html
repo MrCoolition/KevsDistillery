@@ -215,6 +215,63 @@
               }
             </section>
 
+            <section class="source-browser">
+              <article class="browse-panel">
+                <p class="section-kicker">Source browser</p>
+                <h2>Browse real files or folders</h2>
+                <p>
+                  Choose source files from your machine. THE DISTILLERY extracts readable evidence locally,
+                  stages the source set, then sends extracted evidence to the server when you execute.
+                </p>
+                <div class="browse-actions">
+                  <button type="button" class="primary-action" (click)="fileInput.click()">Choose Files</button>
+                  <button type="button" class="icon-action" (click)="folderInput.click()">
+                    <span aria-hidden="true">+</span>
+                    Choose Folder
+                  </button>
+                  <button type="button" class="icon-action" (click)="clearSources(fileInput, folderInput)">
+                    <span aria-hidden="true">x</span>
+                    Clear
+                  </button>
+                </div>
+                <input #fileInput type="file" multiple hidden (change)="stageFiles($any($event.target).files)">
+                <input #folderInput type="file" webkitdirectory directory multiple hidden (change)="stageFiles($any($event.target).files)">
+                <div class="source-stats">
+                  <span><strong>{{ sourceStats().files }}</strong>Files</span>
+                  <span><strong>{{ sourceStats().bytes }}</strong>Size</span>
+                  <span><strong>{{ sourceStats().readable }}</strong>Readable</span>
+                  <span><strong>{{ sourceStats().evidenceChars }}</strong>Evidence chars</span>
+                </div>
+              </article>
+
+              <article class="staged-panel">
+                <p class="section-kicker">Staged sources</p>
+                <div class="source-table">
+                  @if (isExtractingSources() && stagedSources().length === 0) {
+                    <div class="source-row">
+                      <strong>Extracting files...</strong>
+                      <span>running</span>
+                      <em>0 KB</em>
+                    </div>
+                  } @else {
+                    @for (source of stagedSources(); track source.path) {
+                      <div class="source-row">
+                        <strong [title]="source.path">{{ source.path }}</strong>
+                        <span>{{ source.status }}</span>
+                        <em>{{ source.size }} bytes</em>
+                      </div>
+                    } @empty {
+                      <div class="source-row">
+                        <strong>No files selected</strong>
+                        <span>waiting</span>
+                        <em>0 KB</em>
+                      </div>
+                    }
+                  }
+                </div>
+              </article>
+            </section>
+
             <section class="import-console">
               <article class="evidence-editor">
                 <div class="field-grid">
@@ -267,7 +324,7 @@
 
                 <div class="import-actions">
                   <button type="button" class="primary-action" [disabled]="isSynthesizing()" (click)="runSynthesis()">
-                    {{ isSynthesizing() ? 'Distilling...' : 'Run gpt-5.5 Synthesis' }}
+                    {{ isSynthesizing() ? 'Distilling...' : 'Execute Distillery' }}
                   </button>
                   <button type="button" class="icon-action" (click)="refreshProductionState()">
                     Refresh Status
@@ -318,7 +375,7 @@
                     @for (run of historicalRuns(); track run.id) {
                       <button type="button">
                         <strong>{{ run.source_name }}</strong>
-                        <span>{{ run.source_kind }} · {{ run.item_count }} items · {{ run.backlog_count }} actions</span>
+                        <span>{{ run.source_kind }}  -  {{ run.item_count }} items  -  {{ run.backlog_count }} actions</span>
                       </button>
                     } @empty {
                       <p>No persisted runs yet.</p>
@@ -356,7 +413,7 @@
                     <mark [class]="item.criticality">{{ item.criticality }}</mark>
                   </span>
                   <strong>{{ item.name }}</strong>
-                  <small>{{ item.type }} · {{ item.owner }}</small>
+                  <small>{{ item.type }}  -  {{ item.owner }}</small>
                   <span class="evidence-score">{{ item.confidence }}% confidence</span>
                 </button>
               }
@@ -364,7 +421,7 @@
 
             <article class="detail-panel">
               <div class="detail-heading">
-                <span>{{ selectedItem().id }} · {{ selectedItem().type }}</span>
+                <span>{{ selectedItem().id }}  -  {{ selectedItem().type }}</span>
                 <h2>{{ selectedItem().name }}</h2>
               </div>
               <div class="detail-grid">
@@ -386,7 +443,7 @@
                 <div>
                   <p class="section-kicker">Evidence</p>
                   @for (evidence of selectedItem().evidence; track evidence.id) {
-                    <span class="evidence-pill">{{ evidence.id }} · {{ evidence.type }}</span>
+                    <span class="evidence-pill">{{ evidence.id }}  -  {{ evidence.type }}</span>
                   }
                 </div>
               </div>
@@ -420,7 +477,7 @@
                   <div>
                     <span>{{ node.id }}</span>
                     <strong>{{ node.name }}</strong>
-                    <em>{{ node.status }} · {{ node.confidence }}%</em>
+                    <em>{{ node.status }}  -  {{ node.confidence }}%</em>
                   </div>
                 }
               </div>
@@ -429,13 +486,13 @@
                 <section>
                   <h3>Upstream</h3>
                   @for (node of selectedUpstream(); track node.id) {
-                    <button type="button" (click)="selectItem(node.id)">{{ node.id }} · {{ node.name }}</button>
+                    <button type="button" (click)="selectItem(node.id)">{{ node.id }}  -  {{ node.name }}</button>
                   }
                 </section>
                 <section>
                   <h3>Downstream</h3>
                   @for (node of selectedDownstream(); track node.id) {
-                    <button type="button" (click)="selectItem(node.id)">{{ node.id }} · {{ node.name }}</button>
+                    <button type="button" (click)="selectItem(node.id)">{{ node.id }}  -  {{ node.name }}</button>
                   }
                 </section>
               </div>
@@ -533,7 +590,7 @@
                 @if (synthesisResult(); as result) {
                   <section class="generated-json">
                     <h3>Latest synthesis</h3>
-                    <p>Run {{ result.runId }} · {{ result.stored ? 'persisted to Neon' : 'not persisted' }}</p>
+                    <p>Run {{ result.runId }}  -  {{ result.stored ? 'persisted to Neon' : 'not persisted' }}</p>
                     <pre>{{ result.outputText }}</pre>
                   </section>
                 }
@@ -568,7 +625,7 @@
                 <article>
                   <div class="action-priority">{{ action.priority }}</div>
                   <div>
-                    <span>{{ action.actionId }} · {{ action.mode }}</span>
+                    <span>{{ action.actionId }}  -  {{ action.mode }}</span>
                     <h2>{{ action.title }}</h2>
                     <p>{{ action.acceptanceCriteria }}</p>
                   </div>

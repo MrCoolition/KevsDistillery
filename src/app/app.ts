@@ -70,6 +70,15 @@ interface HistoricalRun {
   backlog_count: number;
 }
 
+interface StagedSource {
+  name: string;
+  path: string;
+  size: number;
+  extension: string;
+  status: string;
+  text: string;
+}
+
 @Component({
   selector: 'td-root',
   standalone: true,
@@ -102,6 +111,8 @@ export class App {
   readonly synthesisResult = signal<SynthesisResponse | null>(null);
   readonly synthesisError = signal('');
   readonly historicalRuns = signal<HistoricalRun[]>([]);
+  readonly stagedSources = signal<StagedSource[]>([]);
+  readonly isExtractingSources = signal(false);
 
   readonly navItems: NavItem[] = [
     { id: 'command', label: 'Command' },
@@ -233,6 +244,19 @@ export class App {
 
   readonly isAuthReady = computed(() => !this.apiHealth()?.authRequired || Boolean(this.adminToken()));
 
+  readonly sourceStats = computed(() => {
+    const sources = this.stagedSources();
+    const bytes = sources.reduce((sum, source) => sum + source.size, 0);
+    const readable = sources.filter((source) => source.status.includes('extracted')).length;
+    const evidenceChars = sources.reduce((sum, source) => sum + source.text.length, 0);
+    return {
+      files: sources.length,
+      bytes: this.formatBytes(bytes),
+      readable,
+      evidenceChars: evidenceChars.toLocaleString()
+    };
+  });
+
   readonly reportSections = computed(() => [
     {
       title: 'Executive Snapshot',
@@ -321,6 +345,18 @@ export class App {
   }
 
   async runSynthesis(): Promise<void> {
+    if (!this.extractedText().trim()) {
+      this.synthesisError.set('No evidence payload is staged. Choose files or paste evidence first.');
+      return;
+    }
+
+    if (this.stagedSources().length > 0) {
+      const confirmed = window.confirm('Execute Distillery synthesis? This sends extracted evidence from the selected sources to your configured backend and OpenAI model.');
+      if (!confirmed) {
+        return;
+      }
+    }
+
     this.isSynthesizing.set(true);
     this.synthesisError.set('');
 
@@ -350,6 +386,39 @@ export class App {
       this.synthesisError.set(error instanceof Error ? error.message : 'Synthesis failed.');
     } finally {
       this.isSynthesizing.set(false);
+    }
+  }
+
+  async stageFiles(fileList: FileList | null): Promise<void> {
+    const files = Array.from(fileList || []);
+    if (!files.length) {
+      return;
+    }
+
+    this.isExtractingSources.set(true);
+    this.stagedSources.set([]);
+
+    const sources: StagedSource[] = [];
+    for (const file of files) {
+      const source = await this.extractFile(file);
+      sources.push(source);
+      this.stagedSources.set([...sources]);
+    }
+
+    this.importSourceName.set(files.length === 1 ? files[0].name : `${files.length} source files`);
+    this.knownArtifactsText.set(sources.map((source) => source.path).join('\n'));
+    this.extractedText.set(this.buildEvidencePayload(sources));
+    this.isExtractingSources.set(false);
+  }
+
+  clearSources(fileInput?: HTMLInputElement, folderInput?: HTMLInputElement): void {
+    this.stagedSources.set([]);
+    this.extractedText.set('');
+    if (fileInput) {
+      fileInput.value = '';
+    }
+    if (folderInput) {
+      folderInput.value = '';
     }
   }
 
@@ -430,5 +499,145 @@ export class App {
   private authHeaders(): Record<string, string> {
     const token = this.adminToken().trim();
     return token ? { Authorization: `Bearer ${token}` } : {};
+  }
+
+  private async extractFile(file: File): Promise<StagedSource> {
+    const extension = this.extensionFor(file);
+    const path = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
+    let status = 'metadata only';
+    let text = '';
+
+    try {
+      if (extension === 'docx') {
+        text = await this.extractDocx(file);
+        status = text ? 'extracted docx' : 'empty docx';
+      } else if (extension === 'xlsx' || extension === 'xlsm') {
+        text = await this.extractXlsx(file);
+        status = text ? 'extracted workbook' : 'empty workbook';
+      } else if (this.isTextFile(file, extension)) {
+        text = await file.text();
+        status = 'extracted text';
+      } else if (extension === 'accdb' || extension === 'mdb') {
+        text = 'Access binary selected. Browser security blocks direct ACCDB introspection; use an exported object inventory, saved SQL export, VBA export, or database connector extract for deep object discovery.';
+        status = 'access binary metadata';
+      } else {
+        text = `Binary source selected with MIME type ${file.type || 'unknown'}. Add a text/XML/CSV export or connector extraction for deep parsing.`;
+      }
+    } catch (error) {
+      text = `Extraction failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+      status = 'extract failed';
+    }
+
+    return {
+      name: file.name,
+      path,
+      size: file.size,
+      extension,
+      status,
+      text
+    };
+  }
+
+  private async extractDocx(file: File): Promise<string> {
+    const { default: JSZip } = await import('jszip');
+    const zip = await JSZip.loadAsync(file);
+    const parts: string[] = [];
+    const documentXml = await zip.file('word/document.xml')?.async('text');
+    if (documentXml) {
+      parts.push(`Document text: ${this.cleanXmlText(documentXml)}`);
+    }
+
+    const paths = Object.keys(zip.files).filter((path) => /word\/comments\.xml|docProps\//i.test(path)).slice(0, 30);
+    for (const path of paths) {
+      const text = await zip.file(path)?.async('text');
+      if (text) {
+        parts.push(`${path}: ${this.cleanXmlText(text)}`);
+      }
+    }
+
+    return parts.join('\n\n');
+  }
+
+  private async extractXlsx(file: File): Promise<string> {
+    const { default: JSZip } = await import('jszip');
+    const zip = await JSZip.loadAsync(file);
+    const parts: string[] = [];
+    const workbookXml = await zip.file('xl/workbook.xml')?.async('text');
+    if (workbookXml) {
+      const sheetNames = Array.from(workbookXml.matchAll(/name="([^"]+)"/g)).map((match) => match[1]);
+      parts.push(`Workbook sheets: ${sheetNames.join(', ') || 'not detected'}`);
+    }
+
+    const sharedStrings = await zip.file('xl/sharedStrings.xml')?.async('text');
+    if (sharedStrings) {
+      parts.push(`Shared strings sample: ${this.cleanXmlText(sharedStrings).slice(0, 12000)}`);
+    }
+
+    const worksheetPaths = Object.keys(zip.files).filter((path) => /xl\/worksheets\/sheet.*\.xml/i.test(path)).slice(0, 30);
+    for (const path of worksheetPaths) {
+      const xml = await zip.file(path)?.async('text');
+      if (!xml) {
+        continue;
+      }
+      const formulas = Array.from(xml.matchAll(/<f[^>]*>([\s\S]*?)<\/f>/g)).map((match) => match[1]).slice(0, 300);
+      const dimensions = xml.match(/<dimension ref="([^"]+)"/)?.[1] || 'unknown';
+      parts.push(`${path}: dimension ${dimensions}; formulas: ${formulas.join(' | ') || 'none detected'}`);
+    }
+
+    const metadataPaths = Object.keys(zip.files)
+      .filter((path) => /connections|query|customXml|pivot|externalLink/i.test(path))
+      .slice(0, 30);
+    for (const path of metadataPaths) {
+      const text = await zip.file(path)?.async('text');
+      if (text) {
+        parts.push(`${path}: ${this.cleanXmlText(text).slice(0, 10000)}`);
+      }
+    }
+
+    return parts.join('\n\n');
+  }
+
+  private buildEvidencePayload(sources: StagedSource[]): string {
+    return sources.map((source, index) => [
+      `--- SOURCE ${index + 1}: ${source.path} ---`,
+      `name: ${source.name}`,
+      `extension: ${source.extension || 'none'}`,
+      `size: ${source.size} bytes`,
+      `status: ${source.status}`,
+      '',
+      source.text
+    ].join('\n')).join('\n\n').slice(0, 240000);
+  }
+
+  private extensionFor(file: File): string {
+    const name = file.name.toLowerCase();
+    const index = name.lastIndexOf('.');
+    return index >= 0 ? name.slice(index + 1) : '';
+  }
+
+  private isTextFile(file: File, extension: string): boolean {
+    const textExtensions = new Set([
+      'txt', 'csv', 'tsv', 'sql', 'bas', 'vba', 'm', 'pq', 'json', 'xml',
+      'md', 'log', 'ini', 'yml', 'yaml', 'html', 'css', 'js', 'ts'
+    ]);
+    return file.type.startsWith('text/') || textExtensions.has(extension);
+  }
+
+  private cleanXmlText(xml: string): string {
+    return xml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  private formatBytes(bytes: number): string {
+    if (!bytes) {
+      return '0 KB';
+    }
+    const units = ['B', 'KB', 'MB', 'GB'];
+    let size = bytes;
+    let unit = 0;
+    while (size >= 1024 && unit < units.length - 1) {
+      size /= 1024;
+      unit += 1;
+    }
+    return `${size.toFixed(size >= 10 || unit === 0 ? 0 : 1)} ${units[unit]}`;
   }
 }

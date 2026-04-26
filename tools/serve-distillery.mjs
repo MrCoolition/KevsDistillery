@@ -54,7 +54,7 @@ const server = createServer(async (request, response) => {
     return;
   }
 
-  if (url.pathname.startsWith('/assets/')) {
+  if (url.pathname.startsWith('/assets/') || url.pathname.startsWith('/vendor/')) {
     const assetPath = safePath(join('public', url.pathname));
     if (assetPath.startsWith(root) && existsSync(assetPath)) {
       sendFile(response, assetPath);

@@ -17,6 +17,7 @@ const requiredFiles = [
   'database/schema.sql',
   'vercel.json',
   'preview.html',
+  'public/vendor/jszip.min.js',
   'tools/serve-distillery.mjs'
 ];
 

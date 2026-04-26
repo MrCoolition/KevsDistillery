@@ -553,6 +553,103 @@ meter {
   font-weight: 850;
 }
 
+.source-browser {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  gap: 16px;
+}
+
+.browse-panel,
+.staged-panel {
+  border: 1px solid rgba(17, 17, 17, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.86);
+  padding: 20px;
+}
+
+.browse-panel h2 {
+  margin: 8px 0 10px;
+  font-size: 24px;
+}
+
+.browse-panel p {
+  color: var(--ink-2);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.browse-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.browse-actions button {
+  min-height: 46px;
+  border: 0;
+  border-radius: 7px;
+  padding: 0 16px;
+  font-weight: 850;
+}
+
+.source-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.source-stats span {
+  display: grid;
+  min-height: 70px;
+  align-content: center;
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.source-stats strong {
+  color: var(--ink);
+  font-size: 22px;
+}
+
+.source-table {
+  display: grid;
+  gap: 8px;
+  max-height: 270px;
+  overflow: auto;
+  margin-top: 12px;
+}
+
+.source-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 98px 92px;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel-2);
+  padding: 10px;
+  font-size: 12px;
+}
+
+.source-row strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-row span,
+.source-row em {
+  color: var(--muted);
+  font-style: normal;
+  font-weight: 760;
+}
+
 .error-line {
   margin: 14px 0 0;
   border-left: 3px solid var(--rose);
@@ -1205,6 +1302,7 @@ mark.high {
   .workspace-grid,
   .split-panel,
   .lineage-layout,
+  .source-browser,
   .import-console,
   .report-output {
     grid-template-columns: 1fr;
@@ -1255,6 +1353,7 @@ mark.high {
   .exposure-band,
   .relationship-columns,
   .source-type-grid,
+  .source-stats,
   .field-grid,
   .report-scoreboard {
     grid-template-columns: 1fr;

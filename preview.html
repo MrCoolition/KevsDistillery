@@ -537,6 +537,102 @@
         border: 0;
       }
 
+      .source-browser {
+        display: grid;
+        grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+        gap: 16px;
+      }
+
+      .browse-panel,
+      .staged-panel {
+        border: 1px solid rgba(17, 17, 17, 0.12);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.86);
+        padding: 20px;
+      }
+
+      .browse-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 16px;
+      }
+
+      .browse-actions button {
+        min-height: 46px;
+        border: 0;
+        border-radius: 7px;
+        padding: 0 16px;
+        font-weight: 850;
+      }
+
+      .source-stats {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 14px;
+      }
+
+      .source-stats span {
+        display: grid;
+        min-height: 70px;
+        align-content: center;
+        border-radius: 8px;
+        background: var(--panel-2);
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 800;
+        text-align: center;
+      }
+
+      .source-stats strong {
+        color: var(--ink);
+        font-size: 22px;
+      }
+
+      .source-table {
+        display: grid;
+        gap: 8px;
+        max-height: 270px;
+        overflow: auto;
+        margin-top: 12px;
+      }
+
+      .source-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 98px 92px;
+        gap: 10px;
+        align-items: center;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: var(--panel-2);
+        padding: 10px;
+        font-size: 12px;
+      }
+
+      .source-row strong {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .source-row span,
+      .source-row em {
+        color: var(--muted);
+        font-style: normal;
+        font-weight: 760;
+      }
+
+      .run-result {
+        border-left: 3px solid var(--mint);
+        background: var(--mint-2);
+        color: var(--ink-2);
+        margin-top: 14px;
+        padding: 12px;
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
       .status-list {
         display: grid;
         gap: 10px;
@@ -963,31 +1059,64 @@
               <button type="button"><span>Extractor</span><strong>Mixed Pack</strong><em>Multi-source evidence batches for full current-state synthesis.</em></button>
             </section>
 
+            <section class="source-browser">
+              <article class="browse-panel">
+                <p class="section-kicker">Source browser</p>
+                <h2>Browse real files or folders</h2>
+                <p>Choose source files from your machine. The app extracts readable evidence locally, stages the source set, then sends that extracted evidence to the server when you execute.</p>
+                <div class="browse-actions">
+                  <button class="primary-action" id="choose-files" type="button">Choose Files</button>
+                  <button class="icon-action" id="choose-folder" type="button"><span>+</span> Choose Folder</button>
+                  <button class="icon-action" id="clear-sources" type="button"><span>x</span> Clear</button>
+                </div>
+                <input id="file-input" type="file" multiple hidden>
+                <input id="folder-input" type="file" webkitdirectory directory multiple hidden>
+                <div class="source-stats">
+                  <span><strong id="stat-files">0</strong>Files</span>
+                  <span><strong id="stat-bytes">0 KB</strong>Size</span>
+                  <span><strong id="stat-readable">0</strong>Readable</span>
+                  <span><strong id="stat-evidence">0</strong>Evidence chars</span>
+                </div>
+              </article>
+
+              <article class="staged-panel">
+                <p class="section-kicker">Staged sources</p>
+                <div class="source-table" id="source-table">
+                  <div class="source-row">
+                    <strong>No files selected</strong>
+                    <span>waiting</span>
+                    <em>0 KB</em>
+                  </div>
+                </div>
+              </article>
+            </section>
+
             <section class="import-console">
               <article class="evidence-editor">
                 <div class="field-grid">
-                  <label>Source name <input value="Revenue_Close_Model.xlsm"></label>
-                  <label>Admin token <input type="password" placeholder="Only needed if configured"></label>
+                  <label>Source name <input id="source-name" value="Revenue_Close_Model.xlsm"></label>
+                  <label>Admin token <input id="admin-token" type="password" placeholder="Only needed if configured"></label>
                 </div>
 
-                <label>Known artifacts <textarea rows="4">qry_RevenueFlash_Final
+                <label>Known artifacts <textarea id="known-artifacts" rows="4">qry_RevenueFlash_Final
 Refresh_All
 Revenue_Close_Model.xlsm</textarea></label>
 
-                <label>Target outputs <textarea rows="4">01_Executive_Decision_Brief.pdf
+                <label>Target outputs <textarea id="target-outputs" rows="4">01_Executive_Decision_Brief.pdf
 03_Technical_Discovery_Workbook.xlsx
 07_Action_Backlog.csv</textarea></label>
 
-                <label>Evidence payload <textarea class="evidence-payload" rows="12">Source: Revenue_Close_Model.xlsm
+                <label>Evidence payload <textarea id="evidence-payload" class="evidence-payload" rows="12">Source: Revenue_Close_Model.xlsm
 Power Query: Revenue_Import reads BillingExport_Daily.csv from shared finance drive.
 Formula block: MarginBridge!H12:H240 calculates recognized_margin = recognized_revenue - cogs_adjusted.
 Manual override: Sheet Adjustments column F can override customer tier before close package export.
 Control: Controller reviews variance greater than 3 percent before 7:00 AM distribution.</textarea></label>
 
                 <div class="import-actions">
-                  <button class="primary-action" type="button">Run gpt-5.5 Synthesis</button>
-                  <button class="icon-action" type="button"><span>↻</span> Refresh Status</button>
+                  <button class="primary-action" id="execute-distillery" type="button">Execute Distillery</button>
+                  <button class="icon-action" id="refresh-health" type="button"><span>r</span> Refresh Status</button>
                 </div>
+                <div class="run-result" id="run-result" hidden></div>
               </article>
 
               <aside class="import-side">
@@ -1103,10 +1232,13 @@ Control: Controller reviews variance greater than 3 percent before 7:00 AM distr
       </div>
     </main>
 
+    <script src="/vendor/jszip.min.js"></script>
     <script>
       const tabs = Array.from(document.querySelectorAll('.tab'));
       const jumps = Array.from(document.querySelectorAll('.jump'));
       const views = Array.from(document.querySelectorAll('.view'));
+      const extractorButtons = Array.from(document.querySelectorAll('.source-type-grid button'));
+      const stagedSources = [];
 
       function showView(id) {
         tabs.forEach((tab) => tab.classList.toggle('active', tab.dataset.view === id));
@@ -1115,6 +1247,292 @@ Control: Controller reviews variance greater than 3 percent before 7:00 AM distr
 
       tabs.forEach((tab) => tab.addEventListener('click', () => showView(tab.dataset.view)));
       jumps.forEach((button) => button.addEventListener('click', () => showView(button.dataset.view)));
+
+      extractorButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+          extractorButtons.forEach((item) => item.classList.remove('selected'));
+          button.classList.add('selected');
+        });
+      });
+
+      function selectedSourceKind() {
+        const selected = document.querySelector('.source-type-grid button.selected strong');
+        return (selected?.textContent || 'mixed').trim().toLowerCase().replace(/\s+/g, '-');
+      }
+
+      function lines(value) {
+        return value
+          .split(/\r?\n|,/)
+          .map((line) => line.trim())
+          .filter(Boolean);
+      }
+
+      function formatBytes(bytes) {
+        if (!bytes) {
+          return '0 KB';
+        }
+        const units = ['B', 'KB', 'MB', 'GB'];
+        let size = bytes;
+        let unit = 0;
+        while (size >= 1024 && unit < units.length - 1) {
+          size /= 1024;
+          unit += 1;
+        }
+        return `${size.toFixed(size >= 10 || unit === 0 ? 0 : 1)} ${units[unit]}`;
+      }
+
+      function extensionFor(file) {
+        const name = file.name.toLowerCase();
+        const index = name.lastIndexOf('.');
+        return index >= 0 ? name.slice(index + 1) : '';
+      }
+
+      function isTextFile(file) {
+        const textExtensions = new Set([
+          'txt', 'csv', 'tsv', 'sql', 'bas', 'vba', 'm', 'pq', 'json', 'xml',
+          'md', 'log', 'ini', 'yml', 'yaml', 'html', 'css', 'js', 'ts'
+        ]);
+        return file.type.startsWith('text/') || textExtensions.has(extensionFor(file));
+      }
+
+      function cleanXmlText(xml) {
+        return xml
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+      }
+
+      function xmlSnippets(zip, patterns) {
+        return Object.keys(zip.files)
+          .filter((path) => patterns.some((pattern) => pattern.test(path)))
+          .slice(0, 30);
+      }
+
+      async function extractDocx(file) {
+        const zip = await JSZip.loadAsync(file);
+        const parts = [];
+        const documentXml = await zip.file('word/document.xml')?.async('text');
+        if (documentXml) {
+          parts.push(`Document text: ${cleanXmlText(documentXml)}`);
+        }
+        for (const path of xmlSnippets(zip, [/word\/comments\.xml/i, /docProps\//i])) {
+          const text = await zip.file(path)?.async('text');
+          if (text) {
+            parts.push(`${path}: ${cleanXmlText(text)}`);
+          }
+        }
+        return parts.join('\n\n');
+      }
+
+      async function extractXlsx(file) {
+        const zip = await JSZip.loadAsync(file);
+        const parts = [];
+        const workbookXml = await zip.file('xl/workbook.xml')?.async('text');
+        if (workbookXml) {
+          const sheetNames = Array.from(workbookXml.matchAll(/name="([^"]+)"/g)).map((match) => match[1]);
+          parts.push(`Workbook sheets: ${sheetNames.join(', ') || 'not detected'}`);
+        }
+
+        const sharedStrings = await zip.file('xl/sharedStrings.xml')?.async('text');
+        if (sharedStrings) {
+          parts.push(`Shared strings sample: ${cleanXmlText(sharedStrings).slice(0, 12000)}`);
+        }
+
+        for (const path of xmlSnippets(zip, [/xl\/worksheets\/sheet.*\.xml/i])) {
+          const xml = await zip.file(path)?.async('text');
+          if (!xml) {
+            continue;
+          }
+          const formulas = Array.from(xml.matchAll(/<f[^>]*>([\s\S]*?)<\/f>/g))
+            .map((match) => match[1])
+            .slice(0, 300);
+          const dimensions = xml.match(/<dimension ref="([^"]+)"/)?.[1] || 'unknown';
+          parts.push(`${path}: dimension ${dimensions}; formulas: ${formulas.join(' | ') || 'none detected'}`);
+        }
+
+        for (const path of xmlSnippets(zip, [/connections/i, /query/i, /customXml/i, /pivot/i, /externalLink/i])) {
+          const text = await zip.file(path)?.async('text');
+          if (text) {
+            parts.push(`${path}: ${cleanXmlText(text).slice(0, 10000)}`);
+          }
+        }
+
+        return parts.join('\n\n');
+      }
+
+      async function extractFile(file) {
+        const extension = extensionFor(file);
+        const sourcePath = file.webkitRelativePath || file.name;
+        let status = 'metadata only';
+        let text = '';
+
+        try {
+          if (extension === 'docx') {
+            text = await extractDocx(file);
+            status = text ? 'extracted docx' : 'empty docx';
+          } else if (extension === 'xlsx' || extension === 'xlsm') {
+            text = await extractXlsx(file);
+            status = text ? 'extracted workbook' : 'empty workbook';
+          } else if (isTextFile(file)) {
+            text = await file.text();
+            status = 'extracted text';
+          } else if (extension === 'accdb' || extension === 'mdb') {
+            text = 'Access binary selected. Browser security blocks direct ACCDB introspection; use an exported object inventory, saved SQL export, VBA export, or database connector extract for deep object discovery.';
+            status = 'access binary metadata';
+          } else {
+            text = `Binary source selected with MIME type ${file.type || 'unknown'}. Add a text/XML/CSV export or connector extraction for deep parsing.`;
+          }
+        } catch (error) {
+          text = `Extraction failed: ${error instanceof Error ? error.message : 'unknown error'}`;
+          status = 'extract failed';
+        }
+
+        return {
+          name: file.name,
+          path: sourcePath,
+          size: file.size,
+          extension,
+          status,
+          text
+        };
+      }
+
+      async function stageFiles(fileList) {
+        const files = Array.from(fileList || []);
+        if (!files.length) {
+          return;
+        }
+
+        stagedSources.length = 0;
+        renderStagedSources(true);
+
+        for (const file of files) {
+          stagedSources.push(await extractFile(file));
+          renderStagedSources(true);
+        }
+
+        const sourceName = files.length === 1 ? files[0].name : `${files.length} source files`;
+        document.getElementById('source-name').value = sourceName;
+        document.getElementById('known-artifacts').value = stagedSources.map((source) => source.path).join('\n');
+        document.getElementById('evidence-payload').value = buildEvidencePayload();
+        renderStagedSources(false);
+      }
+
+      function buildEvidencePayload() {
+        const payload = stagedSources.map((source, index) => [
+          `--- SOURCE ${index + 1}: ${source.path} ---`,
+          `name: ${source.name}`,
+          `extension: ${source.extension || 'none'}`,
+          `size: ${source.size} bytes`,
+          `status: ${source.status}`,
+          '',
+          source.text
+        ].join('\n'));
+        return payload.join('\n\n').slice(0, 240000);
+      }
+
+      function renderStagedSources(loading) {
+        const table = document.getElementById('source-table');
+        const bytes = stagedSources.reduce((sum, source) => sum + source.size, 0);
+        const readable = stagedSources.filter((source) => source.status.includes('extracted')).length;
+        const chars = stagedSources.reduce((sum, source) => sum + source.text.length, 0);
+
+        document.getElementById('stat-files').textContent = String(stagedSources.length);
+        document.getElementById('stat-bytes').textContent = formatBytes(bytes);
+        document.getElementById('stat-readable').textContent = String(readable);
+        document.getElementById('stat-evidence').textContent = chars.toLocaleString();
+
+        if (!stagedSources.length) {
+          table.innerHTML = `<div class="source-row"><strong>${loading ? 'Extracting files...' : 'No files selected'}</strong><span>${loading ? 'running' : 'waiting'}</span><em>0 KB</em></div>`;
+          return;
+        }
+
+        table.innerHTML = stagedSources.map((source) => `
+          <div class="source-row">
+            <strong title="${source.path}">${source.path}</strong>
+            <span>${source.status}</span>
+            <em>${formatBytes(source.size)}</em>
+          </div>
+        `).join('');
+      }
+
+      async function executeDistillery() {
+        const result = document.getElementById('run-result');
+        const evidence = document.getElementById('evidence-payload').value.trim();
+        if (!evidence) {
+          result.hidden = false;
+          result.textContent = 'No evidence payload is staged. Choose files or paste evidence first.';
+          return;
+        }
+
+        const confirmed = window.confirm('Execute Distillery synthesis? This sends the extracted evidence payload to your configured backend and OpenAI model.');
+        if (!confirmed) {
+          return;
+        }
+
+        result.hidden = false;
+        result.textContent = 'Executing Distillery synthesis...';
+        document.getElementById('execute-distillery').disabled = true;
+
+        try {
+          const token = document.getElementById('admin-token').value.trim();
+          const response = await fetch('/api/discovery/synthesize', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              ...(token ? { Authorization: `Bearer ${token}` } : {})
+            },
+            body: JSON.stringify({
+              sourceKind: selectedSourceKind(),
+              sourceName: document.getElementById('source-name').value.trim() || 'Selected source set',
+              knownArtifacts: lines(document.getElementById('known-artifacts').value),
+              targetOutputs: lines(document.getElementById('target-outputs').value),
+              extractedText: evidence
+            })
+          });
+          const body = await response.json();
+          if (!response.ok) {
+            throw new Error(body.error || 'Synthesis failed.');
+          }
+
+          const counts = body.counts || {};
+          result.textContent = [
+            `Run ${body.runId || 'completed'} executed with ${body.model || 'configured model'}.`,
+            `Items: ${counts.items ?? 'n/a'}; Relationships: ${counts.relationships ?? 'n/a'}; Artifacts: ${counts.artifacts ?? 'n/a'}; Backlog: ${counts.backlog ?? 'n/a'}.`,
+            body.stored ? 'Persisted to Neon.' : 'Neon is not configured locally, so this run was not persisted.'
+          ].join('\n');
+          showView('reports');
+        } catch (error) {
+          result.textContent = error instanceof Error ? error.message : 'Distillery synthesis failed.';
+        } finally {
+          document.getElementById('execute-distillery').disabled = false;
+        }
+      }
+
+      async function refreshHealth() {
+        const result = document.getElementById('run-result');
+        result.hidden = false;
+        try {
+          const response = await fetch('/api/health');
+          const body = await response.json();
+          result.textContent = `Health: OpenAI ${body.openAIConfigured ? 'configured' : 'missing'}, Neon ${body.database?.ready ? 'ready' : 'not ready'}, model ${body.model}.`;
+        } catch (error) {
+          result.textContent = error instanceof Error ? error.message : 'Health check failed.';
+        }
+      }
+
+      document.getElementById('choose-files').addEventListener('click', () => document.getElementById('file-input').click());
+      document.getElementById('choose-folder').addEventListener('click', () => document.getElementById('folder-input').click());
+      document.getElementById('clear-sources').addEventListener('click', () => {
+        stagedSources.length = 0;
+        document.getElementById('file-input').value = '';
+        document.getElementById('folder-input').value = '';
+        renderStagedSources(false);
+      });
+      document.getElementById('file-input').addEventListener('change', (event) => stageFiles(event.target.files));
+      document.getElementById('folder-input').addEventListener('change', (event) => stageFiles(event.target.files));
+      document.getElementById('execute-distillery').addEventListener('click', executeDistillery);
+      document.getElementById('refresh-health').addEventListener('click', refreshHealth);
     </script>
   </body>
 </html>
