@@ -970,6 +970,186 @@
           grid-template-columns: 1fr;
         }
       }
+
+      /* Clean Uncle Kev layout: big logo first, controls second. */
+      .app-shell {
+        width: min(1180px, calc(100% - 36px));
+        padding-top: 20px;
+      }
+
+      .topbar {
+        position: static;
+        display: flex;
+        justify-content: space-between;
+        border: 0;
+        background: transparent;
+        box-shadow: none;
+        backdrop-filter: none;
+      }
+
+      .brand-mark {
+        display: none;
+      }
+
+      .brand strong {
+        font-size: 13px;
+      }
+
+      .brand em,
+      .nav-tabs,
+      .ai-panel,
+      .metric-grid,
+      .left-rail,
+      .status-cluster,
+      .import-side,
+      .report-scoreboard {
+        display: none;
+      }
+
+      .top-actions {
+        margin-left: auto;
+      }
+
+      .top-actions .icon-action {
+        display: none;
+      }
+
+      .hero-band,
+      .workspace-grid,
+      .source-browser,
+      .import-console,
+      .report-output {
+        display: block;
+      }
+
+      .hero-band {
+        padding: 24px 0 28px;
+      }
+
+      .hero-copy {
+        align-items: center;
+        min-height: 0;
+        padding: 10px 18px 18px;
+        border: 0;
+        background: transparent;
+        box-shadow: none;
+        text-align: center;
+      }
+
+      .hero-copy::before {
+        display: none;
+      }
+
+      .hero-copy > * {
+        max-width: 820px;
+      }
+
+      .hero-logo {
+        width: min(560px, 74vw);
+        height: auto;
+        margin: 0 auto 8px;
+        border-radius: 16px;
+        filter: drop-shadow(0 34px 90px rgba(216, 139, 53, 0.2));
+      }
+
+      .hero-copy h1 {
+        margin: 6px 0 10px;
+        font-size: clamp(38px, 6vw, 72px);
+        line-height: 0.96;
+      }
+
+      .hero-text {
+        max-width: 760px;
+        font-size: 17px;
+      }
+
+      .hero-meta {
+        display: none;
+      }
+
+      .content-surface {
+        border: 0;
+        background: transparent;
+      }
+
+      .import-workbench,
+      .reporting-dashboard,
+      .view-stack {
+        gap: 14px;
+      }
+
+      .import-head {
+        padding: 0;
+        border: 0;
+        background: transparent;
+      }
+
+      .import-head h2 {
+        margin-top: 4px;
+        font-size: clamp(24px, 3vw, 36px);
+      }
+
+      .source-type-grid {
+        display: flex;
+        gap: 8px;
+        overflow-x: auto;
+        padding-bottom: 2px;
+      }
+
+      .source-type-grid button {
+        min-height: 42px;
+        min-width: auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border-radius: 999px;
+        padding: 0 14px;
+      }
+
+      .source-type-grid button span,
+      .source-type-grid button em {
+        display: none;
+      }
+
+      .source-type-grid strong {
+        font-size: 13px;
+      }
+
+      .browse-panel,
+      .staged-panel,
+      .evidence-editor,
+      .report-head,
+      .report-preview,
+      .pack-tree,
+      .artifact-card,
+      .backlog-list article {
+        border: 1px solid rgba(216, 139, 53, 0.2);
+        background: rgba(18, 13, 10, 0.78);
+      }
+
+      .browse-panel,
+      .staged-panel,
+      .evidence-editor {
+        margin-bottom: 14px;
+        padding: 18px;
+      }
+
+      .browse-panel h2 {
+        font-size: 26px;
+      }
+
+      .source-stats {
+        max-width: 680px;
+      }
+
+      .evidence-editor label:nth-of-type(2),
+      .evidence-editor label:nth-of-type(3) {
+        display: none;
+      }
+
+      .evidence-payload {
+        min-height: 180px;
+      }
     </style>
   </head>
   <body>
@@ -1001,9 +1181,10 @@
 
       <section class="hero-band">
         <div class="hero-copy">
+          <img class="hero-logo" src="/assets/uncle-kevs-distillery.png" alt="Uncle Kev's Distillery">
           <p class="eyebrow">Small batch lineage. Barrel strength evidence.</p>
-          <h1>Uncle Kev's Distillery</h1>
-          <p class="hero-text">Drop messy databases, Excel files, docs, SQL, exports, and notes into the still. Uncle Kev distills the evidence into one proof-grade graph, then bottles lineage, documentation, diagrams, impact, and engineer-ready modernization actions.</p>
+          <h1>Data discovery, distilled.</h1>
+          <p class="hero-text">Browse files or folders. Fire the still. Bottle a proof pack engineers can actually use.</p>
           <div class="hero-meta">
             <span>Databases, Excel, Access, Word, CSV, SQL, VBA, M</span>
             <span>Canonical graph-backed outputs</span>
