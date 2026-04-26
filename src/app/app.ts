@@ -24,6 +24,11 @@ interface ApiHealth {
   database: {
     configured: boolean;
     ready: boolean;
+    schema?: string;
+    driver?: string;
+    tableCount?: number;
+    requiredTableCount?: number;
+    missingTables?: string[];
     error?: string;
   };
 }
@@ -32,6 +37,7 @@ interface SynthesisResponse {
   ok: boolean;
   runId?: string;
   stored?: boolean;
+  persistenceError?: string | null;
   counts?: {
     items: number;
     relationships: number;
@@ -264,7 +270,9 @@ export class App {
       const countText = counts
         ? `${counts.items} items, ${counts.relationships} relationships, ${counts.artifacts} artifacts, ${counts.backlog} actions`
         : 'canonical output returned';
-      const persistence = result.stored ? 'Persisted to Neon.' : 'Neon persistence is pending; the synthesis still completed.';
+      const persistence = result.stored
+        ? 'Persisted to Neon.'
+        : `Not persisted to Neon: ${result.persistenceError || 'database write failed.'}`;
       return `Batch bottled: ${countText}. ${persistence}`;
     }
 
@@ -447,6 +455,29 @@ export class App {
     } catch (error) {
       this.apiError.set(error instanceof Error ? error.message : 'Neon schema migration failed.');
     }
+  }
+
+  databaseStatusText(health: ApiHealth): string {
+    const database = health.database;
+    if (!database.configured) {
+      return 'not configured';
+    }
+
+    if (database.ready) {
+      const tableText = database.tableCount && database.requiredTableCount
+        ? ` (${database.tableCount}/${database.requiredTableCount} tables)`
+        : '';
+      return `${database.schema || 'distillery'} schema ready${tableText}`;
+    }
+
+    if (database.error) {
+      return `error: ${database.error}`;
+    }
+
+    const missing = database.missingTables?.length
+      ? `missing ${database.missingTables.join(', ')}`
+      : 'not ready';
+    return `${database.schema || 'distillery'} schema ${missing}`;
   }
 
   itemById(id: string): DiscoveryItem | undefined {

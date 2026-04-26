@@ -1366,7 +1366,7 @@
                     <div><dt>OpenAI</dt><dd id="health-openai">checking</dd></div>
                     <div><dt>Neon</dt><dd id="health-neon">checking</dd></div>
                   </dl>
-                  <button class="schema-button" id="apply-schema" type="button">Prime Neon Barrels</button>
+                  <button class="schema-button" id="apply-schema" type="button">Verify Neon Schema</button>
                 </section>
 
                 <section>
@@ -1680,10 +1680,30 @@
           return 'Backend health has not been checked yet.';
         }
         const openAiState = lastHealth.openAIConfigured ? 'OpenAI ready' : 'OpenAI missing';
-        const neonState = lastHealth.database?.ready
-          ? 'Neon schema ready'
-          : (lastHealth.database?.configured ? 'Neon schema pending' : 'Neon not configured');
+        const neonState = databaseStatusText(lastHealth.database);
         return `${openAiState}. ${neonState}. Model ${lastHealth.model}.`;
+      }
+
+      function databaseStatusText(database) {
+        if (!database?.configured) {
+          return 'Neon not configured';
+        }
+
+        if (database.ready) {
+          const tableText = database.tableCount && database.requiredTableCount
+            ? ` (${database.tableCount}/${database.requiredTableCount} tables)`
+            : '';
+          return `Neon ${database.schema || 'distillery'} schema ready${tableText}`;
+        }
+
+        if (database.error) {
+          return `Neon error: ${database.error}`;
+        }
+
+        const missing = Array.isArray(database.missingTables) && database.missingTables.length
+          ? `missing ${database.missingTables.join(', ')}`
+          : 'not ready';
+        return `Neon ${database.schema || 'distillery'} schema ${missing}`;
       }
 
       function setRunStatus(message, mode = '') {
@@ -1779,7 +1799,8 @@
           }
 
           const counts = body.counts || {};
-          setRunStatus(`<p>Batch ${body.runId || 'completed'} bottled with ${body.model || 'configured model'}.</p><p>Items: ${counts.items ?? 'n/a'}; Relationships: ${counts.relationships ?? 'n/a'}; Artifacts: ${counts.artifacts ?? 'n/a'}; Backlog: ${counts.backlog ?? 'n/a'}.</p><p>${body.stored ? 'Persisted to Neon.' : 'Neon persistence is pending; the synthesis still completed.'}</p>`, 'success');
+          const persistence = body.stored ? 'Persisted to Neon.' : `Not persisted to Neon: ${body.persistenceError || 'database write failed.'}`;
+          setRunStatus(`<p>Batch ${body.runId || 'completed'} bottled with ${body.model || 'configured model'}.</p><p>Items: ${counts.items ?? 'n/a'}; Relationships: ${counts.relationships ?? 'n/a'}; Artifacts: ${counts.artifacts ?? 'n/a'}; Backlog: ${counts.backlog ?? 'n/a'}.</p><p>${persistence}</p>`, 'success');
           showView('reports');
         } catch (error) {
           setRunStatus(`<p>${error instanceof Error ? error.message : 'Still run failed.'}</p>`, 'warning');
@@ -1794,7 +1815,7 @@
           const body = await response.json();
           lastHealth = body;
           const openAiState = body.openAIConfigured ? 'configured' : 'missing';
-          const neonState = body.database?.ready ? 'schema ready' : (body.database?.configured ? 'configured, schema pending' : 'not configured');
+          const neonState = databaseStatusText(body.database).replace(/^Neon\s+/i, '');
           document.getElementById('status-openai').textContent = `OpenAI ${openAiState}`;
           document.getElementById('status-neon').textContent = `Neon ${neonState}`;
           document.getElementById('health-openai').textContent = openAiState;
@@ -1817,7 +1838,8 @@
           if (!response.ok) {
             throw new Error(body.error || 'Schema migration failed.');
           }
-          setRunStatus(`<p>${body.databaseReady ? 'Neon schema applied.' : 'Neon schema endpoint completed.'}</p>`, body.databaseReady ? 'success' : 'warning');
+          const database = body.database || {};
+          setRunStatus(`<p>${body.databaseReady ? databaseStatusText(database) : 'Neon schema endpoint completed.'}</p>`, body.databaseReady ? 'success' : 'warning');
           await refreshHealth();
         } catch (error) {
           setRunStatus(`<p>${error instanceof Error ? error.message : 'Schema migration failed.'}</p>`, 'warning');

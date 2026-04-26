@@ -29,6 +29,7 @@ module.exports = async function handler(request, response) {
       ok: true,
       runId: persistence.runId,
       stored: persistence.stored,
+      persistenceError: persistence.persistenceError || null,
       counts: persistence.counts || null,
       model: synthesis.model,
       outputText: synthesis.outputText,

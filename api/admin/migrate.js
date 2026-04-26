@@ -1,4 +1,4 @@
-const { ensureSchema } = require('../_lib/db');
+const { databaseStatus, ensureSchema } = require('../_lib/db');
 const { handleOptions, requireMethod, sendJson } = require('../_lib/http');
 
 module.exports = async function handler(request, response) {
@@ -12,9 +12,11 @@ module.exports = async function handler(request, response) {
 
   try {
     const ready = await ensureSchema();
+    const status = ready ? await databaseStatus() : null;
     sendJson(response, ready ? 200 : 400, {
       ok: ready,
       databaseReady: ready,
+      database: status,
       error: ready ? null : 'DATABASE_URL, POSTGRES_URL, or NEON_DATABASE_URL is not configured.'
     });
   } catch (error) {

@@ -1,25 +1,23 @@
-import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 
 import { loadDotEnv } from './env.mjs';
 
 loadDotEnv();
 
-const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.NEON_DATABASE_URL;
+const require = createRequire(import.meta.url);
+const { databaseStatus, ensureSchema, hasDatabase, REQUIRED_TABLES } = require('../api/_lib/db.js');
 
-if (!databaseUrl) {
+if (!hasDatabase()) {
   console.error('Set DATABASE_URL, POSTGRES_URL, or NEON_DATABASE_URL before running the migration.');
   process.exit(1);
 }
 
-const { neon } = await import('@neondatabase/serverless');
-const sql = neon(databaseUrl);
-const statements = readFileSync('database/schema.sql', 'utf8')
-  .split(/;\s*(?:\r?\n|$)/)
-  .map((statement) => statement.trim())
-  .filter(Boolean);
+await ensureSchema();
+const status = await databaseStatus();
 
-for (const statement of statements) {
-  await sql.query(`${statement};`);
+if (!status.ready) {
+  console.error(`Distillery schema is missing tables: ${status.missingTables.join(', ')}`);
+  process.exit(1);
 }
 
-console.log(`Applied ${statements.length} Neon schema statements.`);
+console.log(`Applied Uncle Kev's Distillery Neon schema: ${status.schema}.${REQUIRED_TABLES.length} tables ready.`);
