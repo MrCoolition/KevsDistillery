@@ -1793,14 +1793,15 @@
               extractedText: evidence
             })
           });
-          const body = await response.json();
+          const body = await readApiJson(response, 'Synthesis failed.');
           if (!response.ok) {
             throw new Error(body.error || 'Synthesis failed.');
           }
 
           const counts = body.counts || {};
           const persistence = body.stored ? 'Persisted to Neon.' : `Not persisted to Neon: ${body.persistenceError || 'database write failed.'}`;
-          setRunStatus(`<p>Batch ${body.runId || 'completed'} bottled with ${body.model || 'configured model'}.</p><p>Items: ${counts.items ?? 'n/a'}; Relationships: ${counts.relationships ?? 'n/a'}; Artifacts: ${counts.artifacts ?? 'n/a'}; Backlog: ${counts.backlog ?? 'n/a'}.</p><p>${persistence}</p>`, 'success');
+          const fallback = body.fallbackReason ? `<p>${body.fallbackReason}.</p>` : '';
+          setRunStatus(`<p>Batch ${body.runId || 'completed'} bottled with ${body.model || 'configured model'}.</p><p>Items: ${counts.items ?? 'n/a'}; Relationships: ${counts.relationships ?? 'n/a'}; Artifacts: ${counts.artifacts ?? 'n/a'}; Backlog: ${counts.backlog ?? 'n/a'}.</p>${fallback}<p>${persistence}</p>`, 'success');
           showView('reports');
         } catch (error) {
           setRunStatus(`<p>${error instanceof Error ? error.message : 'Still run failed.'}</p>`, 'warning');
@@ -1812,7 +1813,7 @@
       async function refreshHealth() {
         try {
           const response = await fetch('/api/health');
-          const body = await response.json();
+          const body = await readApiJson(response, 'Health check failed.');
           lastHealth = body;
           const openAiState = body.openAIConfigured ? 'configured' : 'missing';
           const neonState = databaseStatusText(body.database).replace(/^Neon\s+/i, '');
@@ -1826,6 +1827,19 @@
         }
       }
 
+      async function readApiJson(response, fallbackMessage) {
+        const text = await response.text();
+        try {
+          return text ? JSON.parse(text) : {};
+        } catch {
+          const firstLine = text.split(/\r?\n/).find((line) => line.trim())?.trim();
+          return {
+            ok: false,
+            error: firstLine || `${fallbackMessage} The server returned a non-JSON response.`
+          };
+        }
+      }
+
       async function applySchema() {
         const result = document.getElementById('run-result');
         result.hidden = false;
@@ -1834,7 +1848,7 @@
           const response = await fetch('/api/admin/migrate', {
             method: 'POST'
           });
-          const body = await response.json();
+          const body = await readApiJson(response, 'Schema migration failed.');
           if (!response.ok) {
             throw new Error(body.error || 'Schema migration failed.');
           }

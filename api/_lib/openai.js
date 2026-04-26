@@ -1,4 +1,5 @@
 const model = process.env.OPENAI_MODEL || 'gpt-5.5';
+const OPENAI_TIMEOUT_MS = 35000;
 
 function buildInstructions(sourceKind, sourceName) {
   return [
@@ -77,17 +78,23 @@ async function synthesizeWithOpenAI(payload) {
     targetOutputs = []
   } = payload;
 
-  const response = await fetch('https://api.openai.com/v1/responses', {
+  const abortController = new AbortController();
+  const timeout = setTimeout(() => abortController.abort(), OPENAI_TIMEOUT_MS);
+
+  let response;
+  try {
+    response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`
     },
+    signal: abortController.signal,
     body: JSON.stringify({
       model,
-      reasoning: { effort: 'high' },
+      reasoning: { effort: 'medium' },
       instructions: buildInstructions(sourceKind, sourceName),
-      max_output_tokens: 10000,
+      max_output_tokens: 5000,
       input: [
         {
           role: 'user',
@@ -106,9 +113,28 @@ async function synthesizeWithOpenAI(payload) {
         }
       ]
     })
-  });
+    });
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      const timeoutError = new Error('OpenAI synthesis timed out before Vercel could finish the request.');
+      timeoutError.statusCode = 504;
+      throw timeoutError;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 
-  const result = await response.json();
+  const responseText = await response.text();
+  let result;
+  try {
+    result = responseText ? JSON.parse(responseText) : {};
+  } catch {
+    const error = new Error('OpenAI returned a non-JSON response.');
+    error.statusCode = 502;
+    error.detail = responseText.slice(0, 1000);
+    throw error;
+  }
   if (!response.ok) {
     const error = new Error('OpenAI request failed.');
     error.statusCode = response.status;

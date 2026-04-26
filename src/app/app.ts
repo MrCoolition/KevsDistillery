@@ -45,6 +45,7 @@ interface SynthesisResponse {
     backlog: number;
   } | null;
   model?: string;
+  fallbackReason?: string | null;
   outputText?: string;
   canonicalDelta?: {
     items?: unknown[];
@@ -273,7 +274,8 @@ export class App {
       const persistence = result.stored
         ? 'Persisted to Neon.'
         : `Not persisted to Neon: ${result.persistenceError || 'database write failed.'}`;
-      return `Batch bottled: ${countText}. ${persistence}`;
+      const fallback = result.fallbackReason ? ` ${result.fallbackReason}.` : '';
+      return `Batch bottled: ${countText}.${fallback} ${persistence}`;
     }
 
     if (!this.stagedSources().length) {
@@ -336,7 +338,7 @@ export class App {
     try {
       this.apiError.set('');
       const response = await fetch('/api/health');
-      const body = await response.json();
+      const body = await this.readApiJson(response, 'Health check failed.');
       if (!response.ok) {
         throw new Error(body.error || 'Health check failed.');
       }
@@ -349,7 +351,7 @@ export class App {
   async loadRuns(): Promise<void> {
     try {
       const response = await fetch('/api/discovery/runs?limit=8');
-      const body = await response.json();
+      const body = await this.readApiJson(response, 'Could not load runs.');
       if (!response.ok) {
         throw new Error(body.error || 'Could not load runs.');
       }
@@ -390,7 +392,7 @@ export class App {
           extractedText: this.extractedText()
         })
       });
-      const body = await response.json();
+      const body = await this.readApiJson(response, 'Synthesis failed.');
       if (!response.ok) {
         throw new Error(body.error || 'Synthesis failed.');
       }
@@ -401,6 +403,19 @@ export class App {
       this.synthesisError.set(error instanceof Error ? error.message : 'Synthesis failed.');
     } finally {
       this.isSynthesizing.set(false);
+    }
+  }
+
+  private async readApiJson(response: Response, fallbackMessage: string): Promise<any> {
+    const text = await response.text();
+    try {
+      return text ? JSON.parse(text) : {};
+    } catch {
+      const firstLine = text.split(/\r?\n/).find((line) => line.trim())?.trim();
+      return {
+        ok: false,
+        error: firstLine || `${fallbackMessage} The server returned a non-JSON response.`
+      };
     }
   }
 
@@ -447,7 +462,7 @@ export class App {
       const response = await fetch('/api/admin/migrate', {
         method: 'POST'
       });
-      const body = await response.json();
+      const body = await this.readApiJson(response, 'Neon schema migration failed.');
       if (!response.ok) {
         throw new Error(body.error || 'Neon schema migration failed.');
       }
