@@ -1,6 +1,5 @@
 const { saveDiscoveryRun } = require('../_lib/db');
 const { handleOptions, readJson, requireMethod, sendJson } = require('../_lib/http');
-const { isMetadataOnlyDiscovery, localSynthesis } = require('../_lib/local-discovery');
 const { synthesizeWithOpenAI } = require('../_lib/openai');
 
 module.exports = async function handler(request, response) {
@@ -23,19 +22,7 @@ module.exports = async function handler(request, response) {
       return;
     }
 
-    let synthesis;
-    if (isMetadataOnlyDiscovery(payload)) {
-      synthesis = localSynthesis(payload, 'metadata-only source; native export required for deep lineage');
-    } else {
-      try {
-        synthesis = await synthesizeWithOpenAI(payload);
-      } catch (error) {
-        synthesis = localSynthesis(
-          payload,
-          error instanceof Error ? `LLM fallback: ${error.message}` : 'LLM fallback: synthesis failed'
-        );
-      }
-    }
+    const synthesis = await synthesizeWithOpenAI(payload);
     const persistence = await saveDiscoveryRun(payload, synthesis);
 
     sendJson(response, 200, {

@@ -28,7 +28,7 @@
         Mash In
       </button>
       <button type="button" class="primary-action" aria-label="Generate action pack" (click)="selectView('reports')">
-        Bottle the Pack
+        Generate Action Pack
       </button>
     </div>
   </header>
@@ -38,7 +38,7 @@
       <img class="hero-logo" src="/assets/uncle-kevs-distillery.png" alt="Uncle Kev's Distillery">
       <p class="eyebrow">Small batch lineage. Barrel strength evidence.</p>
       <h1>Data discovery, distilled.</h1>
-      <p class="hero-text">Browse files or folders. Fire the still. Bottle a proof pack engineers can actually use.</p>
+      <p class="hero-text">Browse files or folders, run OpenAI analysis, and generate a discovery action pack engineers can actually use.</p>
       <div class="hero-meta" aria-label="Executive summary">
         <span>{{ model.businessFunction }}</span>
         <span>{{ model.criticalOutputs.length }} critical outputs</span>
@@ -77,7 +77,7 @@
       <small>weighted discovery signal</small>
     </article>
     <article>
-      <span>Bottle Run</span>
+      <span>Action Pack</span>
       <strong>{{ packageProgress() }}%</strong>
       <small>graph-generated artifacts</small>
     </article>
@@ -176,9 +176,9 @@
               <p class="section-kicker">Generated current state</p>
               <h2>Operating model narrative</h2>
               <p>
-                Choose files or a folder, load the mash bill, then fire the still. Uncle Kev's
+                Choose files or a folder, load the mash bill, then run analysis. Uncle Kev's
                 Distillery extracts readable evidence, builds canonical nodes and edges, traces lineage,
-                documents controls and blockers, scores confidence, and bottles the action pack from one model.
+                documents controls and blockers, scores confidence, and generates the action pack from one model.
               </p>
             </section>
           </section>
@@ -213,7 +213,7 @@
 
             <section class="source-browser">
               <article class="browse-panel">
-                <p class="section-kicker">Bottle room</p>
+                <p class="section-kicker">Source intake</p>
                 <h2>Browse real files or folders</h2>
                 <p>
                   Choose source files from your machine. Uncle Kev's Distillery extracts readable evidence locally,
@@ -311,7 +311,7 @@
 
                 <div class="import-actions">
                   <button type="button" class="primary-action" [disabled]="isSynthesizing()" (click)="runSynthesis()">
-                    {{ isSynthesizing() ? 'Distilling...' : 'Fire the Still' }}
+                    {{ isSynthesizing() ? 'Analyzing...' : 'Run Analysis' }}
                   </button>
                   <button type="button" class="icon-action" (click)="refreshProductionState()">
                     Refresh Status
@@ -539,11 +539,11 @@
           <section class="reporting-dashboard">
             <div class="report-head">
               <div>
-                <p class="section-kicker">Artifact cockpit</p>
-                  <h2>Uncle Kev's Proof Pack</h2>
+                <p class="section-kicker">Generated analysis</p>
+                  <h2>Discovery Action Pack</h2>
                 <p>
-                  A concise executive layer sits on top of the graph, lineage, controls,
-                  business impact, and action backlog.
+                  OpenAI generates the concise report layer from the same canonical model that drives lineage,
+                  controls, business exposure, artifacts, and the engineering backlog.
                 </p>
               </div>
               <div class="report-scoreboard">
@@ -568,9 +568,9 @@
 
             <section class="report-output">
               <aside class="pack-tree">
-                <p class="section-kicker">Bottled output</p>
+                <p class="section-kicker">Output package</p>
                 <div>
-                  <strong>/Uncle_Kevs_Proof_Pack/</strong>
+                  <strong>/Discovery_Action_Pack/</strong>
                   @for (artifact of liveArtifacts(); track artifact.id) {
                     <span>{{ artifact.name }}</span>
                   }
@@ -583,14 +583,16 @@
                   <section>
                     <h3>{{ section.title }}</h3>
                     <p>{{ section.body }}</p>
-                  </section>
-                }
-
-                @if (synthesisResult(); as result) {
-                  <section class="generated-json">
-                    <h3>Latest synthesis</h3>
-                    <p>Run {{ result.runId }}  -  {{ result.stored ? 'persisted to Neon' : 'not persisted' }}</p>
-                    <pre>{{ result.outputText }}</pre>
+                    @if (section.confidence !== null || section.evidenceIds.length) {
+                      <footer class="section-proof">
+                        @if (section.confidence !== null) {
+                          <span>{{ section.confidence }}% confidence</span>
+                        }
+                        @if (section.evidenceIds.length) {
+                          <span>Evidence {{ section.evidenceIds.join(', ') }}</span>
+                        }
+                      </footer>
+                    }
                   </section>
                 }
               </article>

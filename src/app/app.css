@@ -888,16 +888,21 @@ meter {
   line-height: 1.55;
 }
 
-.generated-json pre {
-  max-height: 280px;
-  overflow: auto;
-  border-radius: 8px;
-  background: #111111;
-  color: #f7f7f4;
-  padding: 14px;
-  font-size: 12px;
-  line-height: 1.5;
-  white-space: pre-wrap;
+.section-proof {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.section-proof span {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink-2);
+  font-size: 11px;
+  font-weight: 800;
+  padding: 6px 9px;
+  text-transform: uppercase;
 }
 
 .split-panel {

@@ -1,16 +1,18 @@
 const model = process.env.OPENAI_MODEL || 'gpt-5.5';
-const OPENAI_TIMEOUT_MS = 35000;
+const OPENAI_TIMEOUT_MS = 59000;
 
 function buildInstructions(sourceKind, sourceName) {
   return [
-    'You are Uncle Kev\'s Distillery discovery analyst.',
+    'You are Uncle Kev\'s Distillery principal data discovery analyst.',
     `Source kind: ${sourceKind}. Batch name: ${sourceName}.`,
-    'Return valid JSON only, with no markdown fences.',
-    'The JSON must be a canonical discovery model delta with items, relationships, evidence, business impact assumptions, artifact recommendations, and backlog actions.',
-    'Every discovered item must include id, type, businessPurpose, owner, evidence, confidence, criticality, upstream, downstream, failureImpact, dollarExposure, and recommendedAction. Use dollarExposure only as an optional impact estimate when source evidence supports it.',
-    'If a finding lacks evidence, confidence, or a next action, mark it unfinished and name the smallest source needed to finish it.',
-    'Trace upstream recursively until a terminal condition is reached or a blocker is documented.',
-    'Keep executive narrative concise, but preserve technical depth in structured fields.'
+    'Return one compact valid JSON object only. No markdown.',
+    'Analyze retrieved evidence, not just filenames. Mark weak evidence as blocked with the smallest source needed to finish.',
+    'Required top-level keys: processName, businessFunction, recommendation, decisionRequired, systemsInScope, criticalOutputs, overallRiskRating, estimatedDollarExposure, executiveBrief, reportSections, items, relationships, artifacts, backlog, evidenceIndex, lineageNodes, lineageEdges, failureRisks, openQuestions.',
+    'reportSections: exactly 6 concise sections named Executive Snapshot, Scope and Evidence, Current-State Operating Model, Lineage and Business Logic, Controls and Failure Modes, Action Plan. Body under 45 words. Include confidence and evidenceIds.',
+    'items: max 6 high-signal nodes. Each item requires id, type, name, businessPurpose, owner, evidence, confidence, criticality, upstream, downstream, failureImpact, dollarExposure, recommendedAction, status.',
+    'recommendedAction requires mode, summary, owner, priority, acceptanceCriteria. dollarExposure requires low, base, high, assumptions.',
+    'relationships max 8. backlog max 5. evidenceIndex max 4. openQuestions max 3. Use one evidence object per item.',
+    'artifacts must list the 9 Discovery_Action_Pack outputs with short purpose text. Keep all prose short.'
   ].join('\n');
 }
 
@@ -84,35 +86,40 @@ async function synthesizeWithOpenAI(payload) {
   let response;
   try {
     response = await fetch('https://api.openai.com/v1/responses', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`
-    },
-    signal: abortController.signal,
-    body: JSON.stringify({
-      model,
-      reasoning: { effort: 'medium' },
-      instructions: buildInstructions(sourceKind, sourceName),
-      max_output_tokens: 5000,
-      input: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'input_text',
-              text: JSON.stringify({
-                sourceKind,
-                sourceName,
-                knownArtifacts,
-                targetOutputs,
-                extractedText
-              })
-            }
-          ]
-        }
-      ]
-    })
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`
+      },
+      signal: abortController.signal,
+      body: JSON.stringify({
+        model,
+        reasoning: { effort: 'low' },
+        instructions: buildInstructions(sourceKind, sourceName),
+        max_output_tokens: 4800,
+        text: {
+          format: {
+            type: 'json_object'
+          }
+        },
+        input: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'input_text',
+                text: JSON.stringify({
+                  sourceKind,
+                  sourceName,
+                  knownArtifacts,
+                  targetOutputs,
+                  extractedText
+                })
+              }
+            ]
+          }
+        ]
+      })
     });
   } catch (error) {
     if (error?.name === 'AbortError') {
@@ -143,10 +150,18 @@ async function synthesizeWithOpenAI(payload) {
   }
 
   const outputText = extractOutputText(result);
+  const canonicalDelta = parseJsonOutput(outputText);
+  if (!canonicalDelta || typeof canonicalDelta !== 'object') {
+    const error = new Error('OpenAI did not return a canonical discovery JSON object.');
+    error.statusCode = 502;
+    error.detail = outputText.slice(0, 1000);
+    throw error;
+  }
+
   return {
     model,
     outputText,
-    canonicalDelta: parseJsonOutput(outputText),
+    canonicalDelta,
     raw: result
   };
 }

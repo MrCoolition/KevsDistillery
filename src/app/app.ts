@@ -48,6 +48,14 @@ interface SynthesisResponse {
   fallbackReason?: string | null;
   outputText?: string;
   canonicalDelta?: {
+    processName?: string;
+    businessFunction?: string;
+    recommendation?: string;
+    decisionRequired?: string;
+    overallRiskRating?: string;
+    estimatedDollarExposure?: Record<string, unknown>;
+    executiveBrief?: Record<string, unknown>;
+    reportSections?: ReportSection[];
     items?: unknown[];
     relationships?: unknown[];
     artifacts?: Array<{
@@ -61,6 +69,13 @@ interface SynthesisResponse {
     backlog?: unknown[];
   } | null;
   error?: string;
+}
+
+interface ReportSection {
+  title?: string;
+  body?: string;
+  confidence?: number;
+  evidenceIds?: string[];
 }
 
 interface HistoricalRun {
@@ -102,7 +117,7 @@ export class App {
   readonly importSourceKind = signal<SourceKind>('excel');
   readonly importSourceName = signal('Uncle Kev source batch');
   readonly knownArtifactsText = signal('');
-  readonly targetOutputsText = signal('01_Executive_Decision_Brief.pdf\n02_Current_State_Architecture_Report.pdf\n03_Technical_Discovery_Workbook.xlsx\n05_Diagram_Pack\n07_Action_Backlog.csv\n09_Metadata_Manifest.json');
+  readonly targetOutputsText = signal('01_Executive_Decision_Brief.pdf\n02_Current_State_Architecture_Report.pdf\n03_Technical_Discovery_Workbook.xlsx\n04_Auto_Documentation_Pack\n05_Diagram_Pack\n06_Financial_Impact_Model.xlsx\n07_Action_Backlog.csv\n08_Evidence_Archive\n09_Metadata_Manifest.json');
   readonly extractedText = signal('Choose files or a folder above. Extracted evidence will collect here before the still runs.');
   readonly apiHealth = signal<ApiHealth | null>(null);
   readonly apiError = signal('');
@@ -275,7 +290,10 @@ export class App {
         ? 'Persisted to Neon.'
         : `Not persisted to Neon: ${result.persistenceError || 'database write failed.'}`;
       const fallback = result.fallbackReason ? ` ${result.fallbackReason}.` : '';
-      return `Batch bottled: ${countText}.${fallback} ${persistence}`;
+      const analysis = result.model === 'gpt-5.5'
+        ? 'OpenAI analyzed the staged evidence'
+        : 'Fallback analysis generated a blocker-backed action pack';
+      return `${analysis}: ${countText}.${fallback} ${persistence}`;
     }
 
     if (!this.stagedSources().length) {
@@ -284,30 +302,57 @@ export class App {
 
     const stats = this.sourceStats();
     if (this.limitedExtraction()) {
-      return `${stats.files} source staged (${stats.bytes}). Browser extraction found ${stats.evidenceChars} evidence characters. Binary Access files are metadata-only in the browser; export Access object inventory, saved SQL, VBA, or use a native extractor for deep table/query lineage. You can still fire the still to generate a blocker-backed discovery pass.`;
+      return `${stats.files} source staged (${stats.bytes}). Browser extraction found ${stats.evidenceChars} evidence characters. Some files still need native exports or connector metadata for full object-level lineage, but the retrieved evidence is ready for analysis.`;
     }
 
-    return `${stats.files} source staged (${stats.bytes}) with ${stats.readable} readable files and ${stats.evidenceChars} evidence characters. Ready to fire the still.`;
+    return `${stats.files} source staged (${stats.bytes}) with ${stats.readable} readable files and ${stats.evidenceChars} evidence characters. Ready to run analysis.`;
   });
 
-  readonly reportSections = computed(() => [
-    {
-      title: 'Executive Snapshot',
-      body: `${this.model.processName} supports ${this.model.businessFunction}. Fire a real source batch to replace this starter state with evidence-backed scope, lineage, blockers, confidence, and actions.`
-    },
-    {
-      title: 'Current-State Narrative',
-      body: 'The generated report compresses the operating model into trigger, actor, input, processing step, validation, output, handoff, and exception path sections while preserving evidence references.'
-    },
-    {
-      title: 'Lineage and Controls',
-      body: `${this.model.relationships.length} starter node-edge relationships connect the mash bill, proof graph, and bottled outputs. Still runs expand this into real lineage.`
-    },
-    {
-      title: 'Remediation Backlog',
-      body: `${this.criticalBacklog().length} action records are prioritized for Fivetran ingestion, dbt rebuild, Snowpark controls, governance, and retirement decisions.`
+  readonly reportSections = computed(() => {
+    const generated = this.synthesisResult()?.canonicalDelta?.reportSections;
+    if (generated?.length) {
+      return generated
+        .filter((section) => section?.title || section?.body)
+        .map((section, index) => ({
+          title: section.title || `Analysis Section ${index + 1}`,
+          body: section.body || 'No narrative returned for this section.',
+          confidence: typeof section.confidence === 'number' ? section.confidence : null,
+          evidenceIds: Array.isArray(section.evidenceIds) ? section.evidenceIds : []
+        }));
     }
-  ]);
+
+    const delta = this.synthesisResult()?.canonicalDelta;
+    if (delta) {
+      return this.sectionsFromCanonicalDelta(delta);
+    }
+
+    return [
+      {
+        title: 'Executive Snapshot',
+        body: `${this.model.processName} supports ${this.model.businessFunction}. Run a real source batch to replace this starter state with evidence-backed scope, lineage, blockers, confidence, and actions.`,
+        confidence: null,
+        evidenceIds: []
+      },
+      {
+        title: 'Current-State Narrative',
+        body: 'The generated report compresses the operating model into trigger, actor, input, processing step, validation, output, handoff, and exception path sections while preserving evidence references.',
+        confidence: null,
+        evidenceIds: []
+      },
+      {
+        title: 'Lineage and Controls',
+        body: `${this.model.relationships.length} starter node-edge relationships connect the source set, canonical graph, and generated outputs. Runs expand this into real lineage.`,
+        confidence: null,
+        evidenceIds: []
+      },
+      {
+        title: 'Remediation Backlog',
+        body: `${this.criticalBacklog().length} action records are prioritized for Fivetran ingestion, dbt rebuild, Snowpark controls, governance, and retirement decisions.`,
+        confidence: null,
+        evidenceIds: []
+      }
+    ];
+  });
 
   constructor() {
     void this.refreshProductionState();
@@ -363,12 +408,12 @@ export class App {
 
   async runSynthesis(): Promise<void> {
     if (!this.extractedText().trim()) {
-      this.synthesisError.set('No evidence payload is staged. Choose files or paste evidence before firing the still.');
+      this.synthesisError.set('No evidence payload is staged. Choose files or paste evidence before running analysis.');
       return;
     }
 
     if (this.stagedSources().length > 0) {
-      const confirmed = window.confirm('Fire Uncle Kev\'s still? This sends extracted evidence from the selected sources to your configured backend and OpenAI model.');
+      const confirmed = window.confirm('Run Uncle Kev\'s analysis? This sends extracted evidence from the selected sources to your configured backend and OpenAI model.');
       if (!confirmed) {
         return;
       }
@@ -435,6 +480,7 @@ export class App {
       this.stagedSources.set([...sources]);
     }
 
+    this.importSourceKind.set(this.inferSourceKind(sources));
     this.importSourceName.set(files.length === 1 ? files[0].name : `${files.length} source files in the mash bill`);
     this.knownArtifactsText.set(sources.map((source) => source.path).join('\n'));
     this.extractedText.set(this.buildEvidencePayload(sources));
@@ -552,8 +598,8 @@ export class App {
         text = await file.text();
         status = 'extracted text';
       } else if (extension === 'accdb' || extension === 'mdb') {
-        text = 'Access binary selected. Browser security blocks direct ACCDB introspection; use an exported object inventory, saved SQL export, VBA export, or database connector extract for deep object discovery.';
-        status = 'access binary metadata';
+        text = await this.extractAccessBinary(file);
+        status = text.includes('Recovered strings:') ? 'extracted access strings' : 'access binary metadata';
       } else {
         text = `Binary source selected with MIME type ${file.type || 'unknown'}. Add a text/XML/CSV export or connector extraction for deep parsing.`;
       }
@@ -631,6 +677,78 @@ export class App {
     return parts.join('\n\n');
   }
 
+  private async extractAccessBinary(file: File): Promise<string> {
+    const buffer = await file.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    const strings = new Set<string>();
+    let asciiRun = '';
+    let utf16Run = '';
+
+    const keep = (value: string): void => {
+      const cleaned = value.replace(/\s+/g, ' ').trim();
+      if (cleaned.length < 4 || cleaned.length > 180) {
+        return;
+      }
+      if (!/[A-Za-z]/.test(cleaned)) {
+        return;
+      }
+      const signal = /[A-Za-z0-9_.$# -]{4,}/.test(cleaned);
+      if (!signal) {
+        return;
+      }
+      strings.add(cleaned);
+    };
+
+    for (let index = 0; index < bytes.length; index += 1) {
+      const byte = bytes[index];
+      if (byte >= 32 && byte <= 126) {
+        asciiRun += String.fromCharCode(byte);
+      } else {
+        keep(asciiRun);
+        asciiRun = '';
+      }
+
+      if (index + 1 < bytes.length && bytes[index + 1] === 0 && byte >= 32 && byte <= 126) {
+        utf16Run += String.fromCharCode(byte);
+        index += 1;
+      } else {
+        keep(utf16Run);
+        utf16Run = '';
+      }
+
+      if (strings.size >= 1800) {
+        break;
+      }
+    }
+
+    keep(asciiRun);
+    keep(utf16Run);
+
+    const ranked = [...strings]
+      .filter((value) => !/^(Microsoft|Standard|General|Normal|Arial|Calibri)$/i.test(value))
+      .sort((a, b) => this.accessStringScore(b) - this.accessStringScore(a))
+      .slice(0, 900);
+
+    if (!ranked.length) {
+      return [
+        'Access binary selected.',
+        'Browser-side string recovery found no readable object names or business terms.',
+        'Use exported Access object inventory, saved SQL, linked table metadata, VBA modules, forms/reports, or a native extractor for deep discovery.'
+      ].join('\n');
+    }
+
+    return [
+      'Access binary string recovery.',
+      `File: ${file.name}`,
+      `Size: ${file.size} bytes`,
+      `Recovered string count: ${ranked.length}`,
+      'Interpretation note: these recovered strings are source evidence hints, not a full Access catalog. OpenAI must analyze them, document confidence, and call out exact exports needed to finish object-level lineage.',
+      '',
+      'Recovered strings:',
+      ranked.join('\n')
+    ].join('\n').slice(0, 70000);
+  }
+
   private buildEvidencePayload(sources: StagedSource[]): string {
     return sources.map((source, index) => [
       `--- SOURCE ${index + 1}: ${source.path} ---`,
@@ -640,7 +758,7 @@ export class App {
       `status: ${source.status}`,
       '',
       source.text
-    ].join('\n')).join('\n\n').slice(0, 240000);
+    ].join('\n')).join('\n\n').slice(0, 80000);
   }
 
   private extensionFor(file: File): string {
@@ -659,6 +777,63 @@ export class App {
 
   private cleanXmlText(xml: string): string {
     return xml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  private inferSourceKind(sources: StagedSource[]): SourceKind {
+    const extensions = new Set(sources.map((source) => source.extension));
+    if (extensions.has('accdb') || extensions.has('mdb')) {
+      return 'access';
+    }
+    if (extensions.has('xlsx') || extensions.has('xlsm') || extensions.has('xls')) {
+      return 'excel';
+    }
+    if (extensions.has('docx') || extensions.has('doc')) {
+      return 'word';
+    }
+    if (['sql', 'csv', 'tsv', 'json', 'xml'].some((extension) => extensions.has(extension))) {
+      return sources.length > 1 ? 'mixed' : 'database';
+    }
+    return sources.length > 1 ? 'mixed' : this.importSourceKind();
+  }
+
+  private sectionsFromCanonicalDelta(delta: NonNullable<SynthesisResponse['canonicalDelta']>) {
+    return [
+      {
+        title: 'Executive Snapshot',
+        body: `${delta.processName || this.importSourceName()} was analyzed for ${delta.businessFunction || 'data discovery and migration readiness'}. ${delta.recommendation || 'Review generated items, lineage, artifacts, and actions.'}`,
+        confidence: null,
+        evidenceIds: []
+      },
+      {
+        title: 'Scope Coverage and Confidence',
+        body: `${delta.items?.length || 0} canonical items, ${delta.relationships?.length || 0} relationships, ${delta.artifacts?.length || 0} artifacts, and ${delta.backlog?.length || 0} backlog actions were generated from the submitted evidence.`,
+        confidence: null,
+        evidenceIds: []
+      },
+      {
+        title: 'Decisions Needed',
+        body: delta.decisionRequired || 'Confirm ownership, unresolved evidence gaps, and migration action priority.',
+        confidence: null,
+        evidenceIds: []
+      }
+    ];
+  }
+
+  private accessStringScore(value: string): number {
+    let score = 0;
+    if (/[A-Za-z]+_[A-Za-z0-9_]+/.test(value)) {
+      score += 8;
+    }
+    if (/\b(qry|tbl|frm|rpt|macro|module|select|insert|update|delete|join|where|from)\b/i.test(value)) {
+      score += 12;
+    }
+    if (/[A-Z][a-z]+[A-Z][A-Za-z]+/.test(value)) {
+      score += 6;
+    }
+    if (/\b(customer|invoice|order|claim|policy|account|product|payment|member|provider|vendor|employee|health|fettle)\b/i.test(value)) {
+      score += 10;
+    }
+    return score + Math.min(value.length, 60) / 10;
   }
 
   private formatBytes(bytes: number): string {

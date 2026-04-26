@@ -829,6 +829,23 @@
         line-height: 1.55;
       }
 
+      .section-proof {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .section-proof span {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        color: var(--ink-2);
+        font-size: 11px;
+        font-weight: 800;
+        padding: 6px 9px;
+        text-transform: uppercase;
+      }
+
       .pack-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -1201,7 +1218,7 @@
 
         <div class="top-actions">
           <button class="icon-action jump" data-view="imports" type="button"><span>+</span> Mash In</button>
-          <button class="primary-action jump" data-view="reports" type="button">Bottle the Pack</button>
+          <button class="primary-action jump" data-view="reports" type="button">Generate Action Pack</button>
         </div>
       </header>
 
@@ -1210,7 +1227,7 @@
           <img class="hero-logo" src="/assets/uncle-kevs-distillery.png" alt="Uncle Kev's Distillery">
           <p class="eyebrow">Small batch lineage. Barrel strength evidence.</p>
           <h1>Data discovery, distilled.</h1>
-          <p class="hero-text">Browse files or folders. Fire the still. Bottle a proof pack engineers can actually use.</p>
+          <p class="hero-text">Browse files or folders, run OpenAI analysis, and generate a discovery action pack engineers can actually use.</p>
           <div class="hero-meta">
             <span>Databases, Excel, Access, Word, CSV, SQL, VBA, M</span>
             <span>Canonical graph-backed outputs</span>
@@ -1237,7 +1254,7 @@
         <article><span>Mash Bill</span><strong>load</strong><small>files and folders</small></article>
         <article><span>Proof Points</span><strong>extract</strong><small>text, workbook, docs</small></article>
         <article><span>Still Run</span><strong>graph</strong><small>nodes, edges, actions</small></article>
-        <article><span>Bottle Run</span><strong>pack</strong><small>reports and backlog</small></article>
+        <article><span>Action Pack</span><strong>pack</strong><small>reports and backlog</small></article>
       </section>
 
       <div class="workspace-grid">
@@ -1307,7 +1324,7 @@
 
             <section class="source-browser">
               <article class="browse-panel">
-                <p class="section-kicker">Bottle room</p>
+                <p class="section-kicker">Source intake</p>
                 <h2>Browse real files or folders</h2>
                 <p>Choose source files from your machine. Uncle Kev's Distillery extracts readable evidence locally, stages the source set, then sends that extracted evidence to the copper still when you execute.</p>
                 <div class="browse-actions">
@@ -1346,13 +1363,19 @@
                 <label>Known artifacts <textarea id="known-artifacts" rows="4"></textarea></label>
 
                 <label>Target outputs <textarea id="target-outputs" rows="4">01_Executive_Decision_Brief.pdf
+02_Current_State_Architecture_Report.pdf
 03_Technical_Discovery_Workbook.xlsx
-07_Action_Backlog.csv</textarea></label>
+04_Auto_Documentation_Pack
+05_Diagram_Pack
+06_Financial_Impact_Model.xlsx
+07_Action_Backlog.csv
+08_Evidence_Archive
+09_Metadata_Manifest.json</textarea></label>
 
                 <label>Evidence payload <textarea id="evidence-payload" class="evidence-payload" rows="12">Choose files or a folder above. Extracted evidence will collect here before the still runs.</textarea></label>
 
                 <div class="import-actions">
-                  <button class="primary-action" id="execute-distillery" type="button">Fire the Still</button>
+                  <button class="primary-action" id="execute-distillery" type="button">Run Analysis</button>
                   <button class="icon-action" id="refresh-health" type="button"><span>r</span> Refresh Status</button>
                 </div>
                 <div class="run-result" id="run-result" hidden></div>
@@ -1372,7 +1395,7 @@
                 <section>
                   <p class="section-kicker">Recent batches</p>
                   <div class="run-list">
-                    <button type="button"><strong>No batches yet</strong><span>fire the still to create one</span></button>
+                    <button type="button"><strong>No batches yet</strong><span>run analysis to create one</span></button>
                   </div>
                 </section>
               </aside>
@@ -1406,9 +1429,9 @@
           <section class="view" id="reports">
             <div class="report-head">
               <div>
-                <p class="section-kicker">Artifact cockpit</p>
-                <h2>Uncle Kev's Proof Pack</h2>
-                <p>A concise executive layer sits on top of the proof graph, lineage, controls, business impact, evidence, and action backlog.</p>
+                <p class="section-kicker">Generated analysis</p>
+                <h2>Discovery Action Pack</h2>
+                <p>OpenAI generates the concise report layer from the same canonical model that drives lineage, controls, business exposure, artifacts, and the engineering backlog.</p>
               </div>
               <div class="report-scoreboard">
                 <span><strong>10</strong>Items</span>
@@ -1420,9 +1443,9 @@
 
             <section class="report-output">
               <aside class="pack-tree">
-                <p class="section-kicker">Bottled output</p>
+                <p class="section-kicker">Output package</p>
                 <div>
-                  <strong>/Uncle_Kevs_Proof_Pack/</strong>
+                  <strong>/Discovery_Action_Pack/</strong>
                   <span>01_Executive_Decision_Brief.pdf</span>
                   <span>02_Current_State_Architecture_Report.pdf</span>
                   <span>03_Technical_Discovery_Workbook.xlsx</span>
@@ -1435,7 +1458,7 @@
                 </div>
               </aside>
 
-              <article class="report-preview">
+              <article class="report-preview" id="report-preview">
                 <p class="section-kicker">Report output</p>
                 <section><h3>Executive Snapshot</h3><p>The latest source set is summarized as a current-state discovery package with scope, evidence coverage, confidence, critical outputs, unresolved blockers, and recommended actions.</p></section>
                 <section><h3>Current-State Narrative</h3><p>The generated narrative describes how data moves today: source, trigger, actor, input, transformation, validation, output, handoff, exception path, and evidence references.</p></section>
@@ -1496,6 +1519,46 @@
       function selectedSourceKind() {
         const selected = document.querySelector('.source-type-grid button.selected');
         return selected?.dataset.kind || 'mixed';
+      }
+
+      function setSourceKind(kind) {
+        extractorButtons.forEach((button) => {
+          button.classList.toggle('selected', button.dataset.kind === kind);
+        });
+      }
+
+      function inferSourceKind(sources) {
+        const extensions = new Set(sources.map((source) => source.extension));
+        if (extensions.has('accdb') || extensions.has('mdb')) {
+          return 'access';
+        }
+        if (extensions.has('xlsx') || extensions.has('xlsm') || extensions.has('xls')) {
+          return 'excel';
+        }
+        if (extensions.has('docx') || extensions.has('doc')) {
+          return 'word';
+        }
+        if (['sql', 'csv', 'tsv', 'json', 'xml'].some((extension) => extensions.has(extension))) {
+          return sources.length > 1 ? 'mixed' : 'database';
+        }
+        return sources.length > 1 ? 'mixed' : selectedSourceKind();
+      }
+
+      function accessStringScore(value) {
+        let score = 0;
+        if (/[A-Za-z]+_[A-Za-z0-9_]+/.test(value)) {
+          score += 8;
+        }
+        if (/\b(qry|tbl|frm|rpt|macro|module|select|insert|update|delete|join|where|from)\b/i.test(value)) {
+          score += 12;
+        }
+        if (/[A-Z][a-z]+[A-Z][A-Za-z]+/.test(value)) {
+          score += 6;
+        }
+        if (/\b(customer|invoice|order|claim|policy|account|product|payment|member|provider|vendor|employee|health|fettle)\b/i.test(value)) {
+          score += 10;
+        }
+        return score + Math.min(value.length, 60) / 10;
       }
 
       function lines(value) {
@@ -1598,6 +1661,74 @@
         return parts.join('\n\n');
       }
 
+      async function extractAccessBinary(file) {
+        const buffer = await file.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
+        const strings = new Set();
+        let asciiRun = '';
+        let utf16Run = '';
+
+        const keep = (value) => {
+          const cleaned = String(value || '').replace(/\s+/g, ' ').trim();
+          if (cleaned.length < 4 || cleaned.length > 180 || !/[A-Za-z]/.test(cleaned)) {
+            return;
+          }
+          if (!/[A-Za-z0-9_.$# -]{4,}/.test(cleaned)) {
+            return;
+          }
+          strings.add(cleaned);
+        };
+
+        for (let index = 0; index < bytes.length; index += 1) {
+          const byte = bytes[index];
+          if (byte >= 32 && byte <= 126) {
+            asciiRun += String.fromCharCode(byte);
+          } else {
+            keep(asciiRun);
+            asciiRun = '';
+          }
+
+          if (index + 1 < bytes.length && bytes[index + 1] === 0 && byte >= 32 && byte <= 126) {
+            utf16Run += String.fromCharCode(byte);
+            index += 1;
+          } else {
+            keep(utf16Run);
+            utf16Run = '';
+          }
+
+          if (strings.size >= 1800) {
+            break;
+          }
+        }
+
+        keep(asciiRun);
+        keep(utf16Run);
+
+        const ranked = Array.from(strings)
+          .filter((value) => !/^(Microsoft|Standard|General|Normal|Arial|Calibri)$/i.test(value))
+          .sort((a, b) => accessStringScore(b) - accessStringScore(a))
+          .slice(0, 900);
+
+        if (!ranked.length) {
+          return [
+            'Access binary selected.',
+            'Browser-side string recovery found no readable object names or business terms.',
+            'Use exported Access object inventory, saved SQL, linked table metadata, VBA modules, forms/reports, or a native extractor for deep discovery.'
+          ].join('\n');
+        }
+
+        return [
+          'Access binary string recovery.',
+          `File: ${file.name}`,
+          `Size: ${file.size} bytes`,
+          `Recovered string count: ${ranked.length}`,
+          'Interpretation note: these recovered strings are source evidence hints, not a full Access catalog. OpenAI must analyze them, document confidence, and call out exact exports needed to finish object-level lineage.',
+          '',
+          'Recovered strings:',
+          ranked.join('\n')
+        ].join('\n').slice(0, 70000);
+      }
+
       async function extractFile(file) {
         const extension = extensionFor(file);
         const sourcePath = file.webkitRelativePath || file.name;
@@ -1615,8 +1746,8 @@
             text = await file.text();
             status = 'extracted text';
           } else if (extension === 'accdb' || extension === 'mdb') {
-            text = 'Access binary selected. Browser security blocks direct ACCDB introspection; use an exported object inventory, saved SQL export, VBA export, or database connector extract for deep object discovery.';
-            status = 'access binary metadata';
+            text = await extractAccessBinary(file);
+            status = text.includes('Recovered strings:') ? 'extracted access strings' : 'access binary metadata';
           } else {
             text = `Binary source selected with MIME type ${file.type || 'unknown'}. Add a text/XML/CSV export or connector extraction for deep parsing.`;
           }
@@ -1649,6 +1780,7 @@
           renderStagedSources(true);
         }
 
+        setSourceKind(inferSourceKind(stagedSources));
         const sourceName = files.length === 1 ? files[0].name : `${files.length} source files`;
         document.getElementById('source-name').value = sourceName;
         document.getElementById('known-artifacts').value = stagedSources.map((source) => source.path).join('\n');
@@ -1666,7 +1798,7 @@
           '',
           source.text
         ].join('\n'));
-        return payload.join('\n\n').slice(0, 240000);
+        return payload.join('\n\n').slice(0, 80000);
       }
 
       function extractionIsLimited() {
@@ -1706,6 +1838,72 @@
         return `Neon ${database.schema || 'distillery'} schema ${missing}`;
       }
 
+      function escapeHtml(value) {
+        return String(value ?? '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function reportSectionsFromResult(body) {
+        const delta = body.canonicalDelta || {};
+        if (Array.isArray(delta.reportSections) && delta.reportSections.length) {
+          return delta.reportSections
+            .filter((section) => section?.title || section?.body)
+            .map((section, index) => ({
+              title: section.title || `Analysis Section ${index + 1}`,
+              body: section.body || 'No narrative returned for this section.',
+              confidence: typeof section.confidence === 'number' ? section.confidence : null,
+              evidenceIds: Array.isArray(section.evidenceIds) ? section.evidenceIds : []
+            }));
+        }
+
+        return [
+          {
+            title: 'Executive Snapshot',
+            body: `${delta.processName || document.getElementById('source-name').value || 'Source batch'} was analyzed for ${delta.businessFunction || 'data discovery and migration readiness'}. ${delta.recommendation || 'Review generated items, lineage, artifacts, and actions.'}`,
+            confidence: null,
+            evidenceIds: []
+          },
+          {
+            title: 'Scope Coverage and Confidence',
+            body: `${delta.items?.length || 0} canonical items, ${delta.relationships?.length || 0} relationships, ${delta.artifacts?.length || 0} artifacts, and ${delta.backlog?.length || 0} backlog actions were generated from the submitted evidence.`,
+            confidence: null,
+            evidenceIds: []
+          },
+          {
+            title: 'Decisions Needed',
+            body: delta.decisionRequired || 'Confirm ownership, unresolved evidence gaps, and migration action priority.',
+            confidence: null,
+            evidenceIds: []
+          }
+        ];
+      }
+
+      function renderGeneratedReport(body) {
+        const sections = reportSectionsFromResult(body);
+        const container = document.getElementById('report-preview');
+        container.innerHTML = [
+          '<p class="section-kicker">Report output</p>',
+          ...sections.map((section) => {
+            const proof = [
+              section.confidence !== null ? `<span>${escapeHtml(section.confidence)}% confidence</span>` : '',
+              section.evidenceIds.length ? `<span>Evidence ${escapeHtml(section.evidenceIds.join(', '))}</span>` : ''
+            ].filter(Boolean).join('');
+
+            return `
+              <section>
+                <h3>${escapeHtml(section.title)}</h3>
+                <p>${escapeHtml(section.body)}</p>
+                ${proof ? `<footer class="section-proof">${proof}</footer>` : ''}
+              </section>
+            `;
+          })
+        ].join('');
+      }
+
       function setRunStatus(message, mode = '') {
         const result = document.getElementById('run-result');
         result.hidden = false;
@@ -1725,11 +1923,11 @@
         const files = stagedSources.length;
 
         if (extractionIsLimited()) {
-          setRunStatus(`<p>${files} source staged (${formatBytes(bytes)}). Browser extraction found ${chars.toLocaleString()} evidence characters.</p><p>Access .accdb/.mdb files are metadata-only in the browser. That is expected. For deep Access discovery, add an exported object inventory, saved SQL, VBA modules, or a native Access extractor. You can still fire the still now to produce a blocker-backed discovery pass.</p>`, 'warning');
+          setRunStatus(`<p>${files} source staged (${formatBytes(bytes)}). Browser extraction found ${chars.toLocaleString()} evidence characters.</p><p>Some files still need native exports or connector metadata for full object-level lineage, but the retrieved evidence is ready for OpenAI analysis.</p>`, 'warning');
           return;
         }
 
-        setRunStatus(`<p>${files} source staged (${formatBytes(bytes)}), ${readable} readable, ${chars.toLocaleString()} evidence characters. Ready to fire the still.</p>`, 'success');
+        setRunStatus(`<p>${files} source staged (${formatBytes(bytes)}), ${readable} readable, ${chars.toLocaleString()} evidence characters. Ready to run analysis.</p>`, 'success');
       }
 
       function renderStagedSources(loading) {
@@ -1767,16 +1965,16 @@
         const result = document.getElementById('run-result');
         const evidence = document.getElementById('evidence-payload').value.trim();
         if (!evidence) {
-          setRunStatus('<p>No evidence payload is staged. Choose files or paste evidence before firing the still.</p>', 'warning');
+          setRunStatus('<p>No evidence payload is staged. Choose files or paste evidence before running analysis.</p>', 'warning');
           return;
         }
 
-        const confirmed = window.confirm("Fire Uncle Kev's still? This sends the extracted evidence payload to your configured backend and OpenAI model.");
+        const confirmed = window.confirm("Run Uncle Kev's analysis? This sends the extracted evidence payload to your configured backend and OpenAI model.");
         if (!confirmed) {
           return;
         }
 
-        setRunStatus('<p>Running gpt-5.5 against the staged evidence now. The still is working.</p>', 'running');
+        setRunStatus('<p>Running gpt-5.5 against the staged evidence now. OpenAI is building the canonical discovery model and report sections.</p>', 'running');
         document.getElementById('execute-distillery').disabled = true;
 
         try {
@@ -1801,7 +1999,8 @@
           const counts = body.counts || {};
           const persistence = body.stored ? 'Persisted to Neon.' : `Not persisted to Neon: ${body.persistenceError || 'database write failed.'}`;
           const fallback = body.fallbackReason ? `<p>${body.fallbackReason}.</p>` : '';
-          setRunStatus(`<p>Batch ${body.runId || 'completed'} bottled with ${body.model || 'configured model'}.</p><p>Items: ${counts.items ?? 'n/a'}; Relationships: ${counts.relationships ?? 'n/a'}; Artifacts: ${counts.artifacts ?? 'n/a'}; Backlog: ${counts.backlog ?? 'n/a'}.</p>${fallback}<p>${persistence}</p>`, 'success');
+          renderGeneratedReport(body);
+          setRunStatus(`<p>Analysis ${body.runId || 'completed'} generated by ${body.model || 'configured model'}.</p><p>Items: ${counts.items ?? 'n/a'}; Relationships: ${counts.relationships ?? 'n/a'}; Artifacts: ${counts.artifacts ?? 'n/a'}; Backlog: ${counts.backlog ?? 'n/a'}.</p>${fallback}<p>${persistence}</p>`, 'success');
           showView('reports');
         } catch (error) {
           setRunStatus(`<p>${error instanceof Error ? error.message : 'Still run failed.'}</p>`, 'warning');
