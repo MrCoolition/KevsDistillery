@@ -1711,7 +1711,7 @@ export class App {
     const sheetNames = this.itemNamesByType(items, /sheet|table|entity/i, 12);
     const logicNames = this.logicObjectNames(items, 10);
     const outputNames = this.outputObjectNames(deltaRecord, items, 8);
-    const confidence = this.averageConfidence(items);
+    const confidence = this.meanItemConfidence(items);
     const coverage = this.sectionBody([
       `${items.length} canonical nodes and ${relationships.length} evidence-backed relationships are in the active discovery graph.`,
       `${evidenceIndex.length || this.evidenceFromItems(items).length} evidence references are attached to the model; ${backlog.length} engineering actions are ready for triage.`,
@@ -1870,7 +1870,7 @@ export class App {
     return this.uniqueValues([...declaredOutputs, ...inferredOutputs, ...this.targetOutputs()], limit);
   }
 
-  private averageConfidence(items: Record<string, unknown>[]): number | null {
+  private meanItemConfidence(items: Record<string, unknown>[]): number | null {
     const scores = items
       .map((item) => this.readNumber(item, ['confidence']))
       .filter((score): score is number => score !== null && Number.isFinite(score));
