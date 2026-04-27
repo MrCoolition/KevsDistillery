@@ -264,6 +264,24 @@ interface InlineGraphEdge {
   labelY: number;
 }
 
+interface OleStreamEvidence {
+  name: string;
+  path: string;
+  size: number;
+  data: Uint8Array;
+}
+
+interface VbaModuleEvidence {
+  name: string;
+  streamName: string;
+  code: string;
+  procedures: string[];
+  markers: string[];
+  sqlStrings: string[];
+  fileRefs: string[];
+  calls: string[];
+}
+
 @Component({
   selector: 'td-root',
   standalone: true,
@@ -1064,6 +1082,9 @@ export class App {
       } else if (extension === 'xlsx' || extension === 'xlsm') {
         text = await this.extractXlsx(file);
         status = text ? 'extracted workbook' : 'empty workbook';
+      } else if (['bas', 'cls', 'frm', 'vba'].includes(extension)) {
+        text = this.extractVbaTextModule(file.name, await file.text());
+        status = 'extracted vba module';
       } else if (this.isTextFile(file, extension)) {
         text = await file.text();
         status = 'extracted text';
@@ -1389,21 +1410,347 @@ export class App {
     if (!entry) {
       return '';
     }
-    const strings = this.binaryStrings(await entry.async('uint8array'), 2400);
-    const modules = this.uniqueValues(strings
+    const bytes = await entry.async('uint8array');
+    const project = this.extractOleVbaProject(bytes);
+    const strings = this.binaryStrings(bytes, 2400);
+    const modules = this.uniqueValues([
+      ...project.modules.map((module) => module.name),
+      ...strings
       .map((value) => value.match(/Attribute\s+VB_Name\s*=\s*"([^"]+)"/i)?.[1] || '')
-      .filter(Boolean), 60);
-    const procedures = this.uniqueValues(strings.flatMap((value) => {
+        .filter(Boolean)
+    ], 80);
+    const procedures = this.uniqueValues([
+      ...project.modules.flatMap((module) => module.procedures),
+      ...strings.flatMap((value) => {
       return [...value.matchAll(/\b(?:Private\s+|Public\s+)?(?:Sub|Function)\s+([A-Za-z_][A-Za-z0-9_]*)/gi)]
         .map((match) => match[1]);
-    }), 120);
-    const markers = this.uniqueValues(strings.filter((value) => /Workbook_Open|Auto_Open|RefreshAll|QueryTable|ListObject|Connection|PowerQuery|ADODB|DAO|FileSystemObject|Shell|On Error|Application\.Run/i.test(value)), 80);
-    return [
+      })
+    ], 160);
+    const markers = this.uniqueValues([
+      ...project.modules.flatMap((module) => module.markers),
+      ...strings.filter((value) => /Workbook_Open|Auto_Open|RefreshAll|QueryTable|ListObject|Connection|PowerQuery|ADODB|DAO|FileSystemObject|Shell|On Error|Application\.Run/i.test(value))
+    ], 120);
+    const lines = [
       'VBA project: present',
+      `VBA OLE streams: ${project.streams.map((stream) => `${stream.path || stream.name} (${stream.size} bytes)`).join(' | ') || 'stream directory not recovered'}`,
       `VBA modules: ${modules.join(', ') || 'module names not recovered from compressed project'}`,
       `VBA procedures: ${procedures.join(', ') || 'procedure names not recovered from compressed project'}`,
       `VBA automation markers: ${markers.join(' | ') || 'none recovered'}`
+    ];
+
+    for (const module of project.modules.slice(0, 16)) {
+      lines.push(`VBA module code: ${module.name} (stream=${module.streamName}; chars=${module.code.length})`);
+      lines.push(`VBA procedures in ${module.name}: ${module.procedures.join(', ') || 'none detected'}`);
+      lines.push(`VBA calls in ${module.name}: ${module.calls.join(' | ') || 'none detected'}`);
+      lines.push(`VBA transformation markers in ${module.name}: ${module.markers.join(' | ') || 'none detected'}`);
+      lines.push(`VBA SQL strings in ${module.name}: ${module.sqlStrings.join(' | ') || 'none detected'}`);
+      lines.push(`VBA file/url refs in ${module.name}: ${module.fileRefs.join(' | ') || 'none detected'}`);
+      lines.push(`VBA source excerpt ${module.name}:\n${module.code.slice(0, 9000)}\nVBA source excerpt end ${module.name}`);
+    }
+
+    if (!project.modules.length) {
+      lines.push('VBA source extraction: module source was not decompressed from vbaProject.bin; use exported .bas/.cls/.frm modules to complete code-level transformation analysis.');
+    }
+
+    return lines.join('\n');
+  }
+
+  private extractVbaTextModule(filename: string, code: string): string {
+    const module = this.analyzeVbaModule(filename.replace(/\.[^.]+$/g, ''), filename, code);
+    return [
+      `VBA text module: ${filename}`,
+      `VBA module code: ${module.name} (stream=${module.streamName}; chars=${module.code.length})`,
+      `VBA procedures in ${module.name}: ${module.procedures.join(', ') || 'none detected'}`,
+      `VBA calls in ${module.name}: ${module.calls.join(' | ') || 'none detected'}`,
+      `VBA transformation markers in ${module.name}: ${module.markers.join(' | ') || 'none detected'}`,
+      `VBA SQL strings in ${module.name}: ${module.sqlStrings.join(' | ') || 'none detected'}`,
+      `VBA file/url refs in ${module.name}: ${module.fileRefs.join(' | ') || 'none detected'}`,
+      `VBA source excerpt ${module.name}:\n${module.code.slice(0, 14000)}\nVBA source excerpt end ${module.name}`
     ].join('\n');
+  }
+
+  private extractOleVbaProject(bytes: Uint8Array): { streams: OleStreamEvidence[]; modules: VbaModuleEvidence[] } {
+    const streams = this.readOleCompoundStreams(bytes);
+    const modules = streams
+      .filter((stream) => !/^dir$|^project$|^projectwm$|^_vba_project$/i.test(stream.name))
+      .map((stream) => {
+        const code = this.decompressVbaModuleStream(stream.data);
+        return code ? this.analyzeVbaModule('', stream.path || stream.name, code) : null;
+      })
+      .filter((module): module is VbaModuleEvidence => Boolean(module));
+
+    return { streams: streams.slice(0, 80), modules };
+  }
+
+  private readOleCompoundStreams(bytes: Uint8Array): OleStreamEvidence[] {
+    const signature = 'd0cf11e0a1b11ae1';
+    if (this.hexBytes(bytes.slice(0, 8)) !== signature) {
+      return [];
+    }
+
+    const sectorSize = 1 << this.u16(bytes, 30);
+    const miniSectorSize = 1 << this.u16(bytes, 32);
+    const firstDirectorySector = this.u32(bytes, 48);
+    const miniStreamCutoff = this.u32(bytes, 56) || 4096;
+    const firstMiniFatSector = this.u32(bytes, 60);
+    const miniFatSectorCount = this.u32(bytes, 64);
+    const firstDifatSector = this.u32(bytes, 68);
+    const difatSectorCount = this.u32(bytes, 72);
+    const endOfChain = 0xfffffffe;
+    const freeSector = 0xffffffff;
+    const difat: number[] = [];
+
+    for (let offset = 76; offset < 512; offset += 4) {
+      const sector = this.u32(bytes, offset);
+      if (sector !== freeSector) {
+        difat.push(sector);
+      }
+    }
+
+    let difatSector = firstDifatSector;
+    for (let index = 0; index < difatSectorCount && difatSector !== endOfChain && difatSector !== freeSector; index += 1) {
+      const sector = this.oleSector(bytes, sectorSize, difatSector);
+      for (let offset = 0; offset < sectorSize - 4; offset += 4) {
+        const fatSector = this.u32(sector, offset);
+        if (fatSector !== freeSector) {
+          difat.push(fatSector);
+        }
+      }
+      difatSector = this.u32(sector, sectorSize - 4);
+    }
+
+    const fat: number[] = [];
+    for (const fatSector of difat) {
+      const sector = this.oleSector(bytes, sectorSize, fatSector);
+      for (let offset = 0; offset < sector.length; offset += 4) {
+        fat.push(this.u32(sector, offset));
+      }
+    }
+
+    const readRegular = (startSector: number, size?: number): Uint8Array => {
+      if (startSector === endOfChain || startSector === freeSector) {
+        return new Uint8Array();
+      }
+      const chunks: Uint8Array[] = [];
+      let sector = startSector;
+      const visited = new Set<number>();
+      while (sector !== endOfChain && sector !== freeSector && !visited.has(sector) && sector >= 0 && sector < fat.length) {
+        visited.add(sector);
+        chunks.push(this.oleSector(bytes, sectorSize, sector));
+        sector = fat[sector];
+      }
+      return this.concatBytes(chunks, size);
+    };
+
+    const directoryBytes = readRegular(firstDirectorySector);
+    const entries: Array<{ id: number; name: string; type: number; left: number; right: number; child: number; start: number; size: number }> = [];
+    for (let offset = 0; offset + 128 <= directoryBytes.length; offset += 128) {
+      const entry = directoryBytes.slice(offset, offset + 128);
+      const nameLength = this.u16(entry, 64);
+      const name = this.utf16le(entry.slice(0, Math.max(0, nameLength - 2)));
+      const type = entry[66];
+      if (!name || !type) {
+        continue;
+      }
+      entries.push({
+        id: offset / 128,
+        name,
+        type,
+        left: this.u32(entry, 68),
+        right: this.u32(entry, 72),
+        child: this.u32(entry, 76),
+        start: this.u32(entry, 116),
+        size: this.u32(entry, 120)
+      });
+    }
+
+    const root = entries.find((entry) => entry.type === 5);
+    const miniFatBytes = miniFatSectorCount ? readRegular(firstMiniFatSector, miniFatSectorCount * sectorSize) : new Uint8Array();
+    const miniFat: number[] = [];
+    for (let offset = 0; offset + 4 <= miniFatBytes.length; offset += 4) {
+      miniFat.push(this.u32(miniFatBytes, offset));
+    }
+    const miniStream = root ? readRegular(root.start, root.size) : new Uint8Array();
+    const readMini = (startSector: number, size: number): Uint8Array => {
+      const chunks: Uint8Array[] = [];
+      let sector = startSector;
+      const visited = new Set<number>();
+      while (sector !== endOfChain && sector !== freeSector && !visited.has(sector) && sector >= 0 && sector < miniFat.length) {
+        visited.add(sector);
+        const offset = sector * miniSectorSize;
+        chunks.push(miniStream.slice(offset, offset + miniSectorSize));
+        sector = miniFat[sector];
+      }
+      return this.concatBytes(chunks, size);
+    };
+
+    return entries
+      .filter((entry) => entry.type === 2 && entry.size > 0)
+      .map((entry) => ({
+        name: entry.name,
+        path: entry.name,
+        size: entry.size,
+        data: entry.size < miniStreamCutoff ? readMini(entry.start, entry.size) : readRegular(entry.start, entry.size)
+      }));
+  }
+
+  private decompressVbaModuleStream(data: Uint8Array): string {
+    let best = '';
+    let bestScore = 0;
+    const scanLimit = Math.min(data.length - 3, 12000);
+    for (let offset = 0; offset <= scanLimit; offset += 1) {
+      if (data[offset] !== 0x01) {
+        continue;
+      }
+      const header = this.u16(data, offset + 1);
+      if (((header >> 12) & 0x7) !== 0x3) {
+        continue;
+      }
+      const text = this.tryDecompressVbaContainer(data, offset);
+      const score = this.vbaCodeScore(text);
+      if (score > bestScore) {
+        best = text;
+        bestScore = score;
+      }
+      if (bestScore >= 8) {
+        break;
+      }
+    }
+    return bestScore >= 3 ? this.cleanVbaSource(best) : '';
+  }
+
+  private tryDecompressVbaContainer(data: Uint8Array, start: number): string {
+    const output: number[] = [];
+    let cursor = start;
+    if (data[cursor] !== 0x01) {
+      return '';
+    }
+    cursor += 1;
+    let chunks = 0;
+    try {
+      while (cursor + 2 <= data.length && chunks < 512) {
+        const headerStart = cursor;
+        const header = this.u16(data, cursor);
+        cursor += 2;
+        if (((header >> 12) & 0x7) !== 0x3) {
+          break;
+        }
+        const chunkSize = (header & 0x0fff) + 3;
+        const compressed = (header & 0x8000) !== 0;
+        const chunkEnd = Math.min(headerStart + chunkSize, data.length);
+        if (!compressed) {
+          while (cursor < chunkEnd) {
+            output.push(data[cursor]);
+            cursor += 1;
+          }
+        } else {
+          const chunkStart = output.length;
+          while (cursor < chunkEnd) {
+            const flagByte = data[cursor];
+            cursor += 1;
+            for (let bit = 0; bit < 8 && cursor < chunkEnd; bit += 1) {
+              if ((flagByte & (1 << bit)) === 0) {
+                output.push(data[cursor]);
+                cursor += 1;
+              } else {
+                if (cursor + 1 >= chunkEnd) {
+                  cursor = chunkEnd;
+                  break;
+                }
+                const token = this.u16(data, cursor);
+                cursor += 2;
+                const difference = output.length - chunkStart;
+                let bitCount = 0;
+                while ((1 << bitCount) < difference) {
+                  bitCount += 1;
+                }
+                bitCount = Math.max(bitCount, 4);
+                const lengthMask = 0xffff >> bitCount;
+                const offsetMask = (~lengthMask) & 0xffff;
+                const length = (token & lengthMask) + 3;
+                const copyOffset = ((token & offsetMask) >> (16 - bitCount)) + 1;
+                if (copyOffset <= 0 || copyOffset > output.length) {
+                  return '';
+                }
+                for (let index = 0; index < length; index += 1) {
+                  output.push(output[output.length - copyOffset]);
+                }
+              }
+            }
+          }
+        }
+        cursor = chunkEnd;
+        chunks += 1;
+      }
+      return this.bytesToLatin1(output).replace(/\0/g, '');
+    } catch {
+      return '';
+    }
+  }
+
+  private analyzeVbaModule(fallbackName: string, streamName: string, rawCode: string): VbaModuleEvidence {
+    const code = this.cleanVbaSource(rawCode);
+    const name = code.match(/Attribute\s+VB_Name\s*=\s*"([^"]+)"/i)?.[1]
+      || fallbackName
+      || streamName.replace(/^.*[\\/]/, '').replace(/\.[^.]+$/g, '')
+      || 'VBA module';
+    const procedures = this.uniqueValues(
+      [...code.matchAll(/^\s*(?:Private\s+|Public\s+|Friend\s+)?(?:Sub|Function|Property\s+(?:Get|Let|Set))\s+([A-Za-z_][A-Za-z0-9_]*)/gmi)].map((match) => match[1]),
+      80
+    );
+    const calls = this.uniqueValues([
+      ...[...code.matchAll(/\bCall\s+([A-Za-z_][A-Za-z0-9_.]*)/gi)].map((match) => `Call ${match[1]}`),
+      ...[...code.matchAll(/\bApplication\.Run\s+["']?([^"'\r\n,)]+)/gi)].map((match) => `Application.Run ${match[1]}`),
+      ...[...code.matchAll(/\b(?:Run|OnAction)\s*=\s*["']([^"']+)/gi)].map((match) => match[1])
+    ], 80);
+    const sqlStrings = this.uniqueValues(
+      [...code.matchAll(/"([^"\r\n]*(?:SELECT|INSERT|UPDATE|DELETE|MERGE|FROM|WHERE|JOIN)[^"\r\n]*)"/gi)].map((match) => match[1]),
+      60
+    );
+    const fileRefs = this.uniqueValues([
+      ...[...code.matchAll(/\bhttps?:\/\/[^\s"'<>|)]+/gi)].map((match) => match[0].replace(/[.,;]+$/g, '')),
+      ...[...code.matchAll(/["']([A-Za-z]:\\[^"']+|\\\\[^"']+|[^"']+\.(?:csv|txt|xlsx|xlsm|xls|accdb|mdb|pdf|xml|json|sql))["']/gi)].map((match) => match[1])
+    ], 80);
+    const markers = this.uniqueValues(
+      code.split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => /Workbook_Open|Worksheet_Change|Worksheet_Calculate|Auto_Open|RefreshAll|QueryTables?|ListObjects?|WorkbookConnection|Connections?\(|PivotTables?|Recordset|ADODB|DAO|CurrentDb|DoCmd|TransferSpreadsheet|OpenDatabase|FileSystemObject|Shell|CreateObject|GetObject|Open\s+.*\s+For\s+|Print\s+#|Write\s+#|SaveAs|ExportAsFixedFormat|CopyFromRecordset|Range\(|Cells\(|\.Formula|\.Value|Replace\(|Split\(|Trim\(|CDate\(|CDbl\(|CLng\(|DateSerial|On Error/i.test(line))
+        .slice(0, 200),
+      120
+    );
+    return {
+      name: this.cleanDisplayText(name),
+      streamName,
+      code: code.slice(0, 18000),
+      procedures,
+      markers,
+      sqlStrings,
+      fileRefs,
+      calls
+    };
+  }
+
+  private cleanVbaSource(value: string): string {
+    return this.decodeXmlEntities(value)
+      .replace(/\r\n?/g, '\n')
+      .replace(/[^\x09\x0A\x20-\x7E]/g, ' ')
+      .replace(/[ \t]+$/gm, '')
+      .replace(/\n{4,}/g, '\n\n\n')
+      .trim();
+  }
+
+  private vbaCodeScore(text: string): number {
+    if (!text || text.length < 40) {
+      return 0;
+    }
+    let score = 0;
+    if (/Attribute\s+VB_Name/i.test(text)) score += 3;
+    if (/\b(?:Sub|Function|Property\s+(?:Get|Let|Set))\s+[A-Za-z_]/i.test(text)) score += 3;
+    if (/\bEnd\s+(?:Sub|Function|Property)\b/i.test(text)) score += 2;
+    if (/\bOption\s+Explicit\b/i.test(text)) score += 1;
+    if (/\bDim\s+|Set\s+|Range\(|Cells\(|Workbook|Worksheet|Application\./i.test(text)) score += 1;
+    if (/[^\x09\x0A\x0D\x20-\x7E]/.test(text.slice(0, 400))) score -= 2;
+    return score;
   }
 
   private xlsxWorksheetFormulas(xml: string): string[] {
@@ -1553,6 +1900,60 @@ export class App {
     return this.uniqueValues([...strings], limit);
   }
 
+  private u16(bytes: Uint8Array, offset: number): number {
+    return (bytes[offset] || 0) | ((bytes[offset + 1] || 0) << 8);
+  }
+
+  private u32(bytes: Uint8Array, offset: number): number {
+    return ((bytes[offset] || 0)
+      | ((bytes[offset + 1] || 0) << 8)
+      | ((bytes[offset + 2] || 0) << 16)
+      | ((bytes[offset + 3] || 0) << 24)) >>> 0;
+  }
+
+  private hexBytes(bytes: Uint8Array): string {
+    return Array.from(bytes).map((byte) => byte.toString(16).padStart(2, '0')).join('');
+  }
+
+  private oleSector(bytes: Uint8Array, sectorSize: number, sector: number): Uint8Array {
+    const offset = (sector + 1) * sectorSize;
+    return bytes.slice(offset, offset + sectorSize);
+  }
+
+  private concatBytes(chunks: Uint8Array[], size?: number): Uint8Array {
+    const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+    const output = new Uint8Array(size === undefined ? total : Math.min(size, total));
+    let offset = 0;
+    for (const chunk of chunks) {
+      const slice = chunk.slice(0, Math.max(0, output.length - offset));
+      output.set(slice, offset);
+      offset += slice.length;
+      if (offset >= output.length) {
+        break;
+      }
+    }
+    return output;
+  }
+
+  private utf16le(bytes: Uint8Array): string {
+    let value = '';
+    for (let index = 0; index + 1 < bytes.length; index += 2) {
+      const code = this.u16(bytes, index);
+      if (code) {
+        value += String.fromCharCode(code);
+      }
+    }
+    return value.trim();
+  }
+
+  private bytesToLatin1(bytes: number[]): string {
+    const chunks: string[] = [];
+    for (let index = 0; index < bytes.length; index += 8192) {
+      chunks.push(String.fromCharCode(...bytes.slice(index, index + 8192)));
+    }
+    return chunks.join('');
+  }
+
   private extractUrlReferences(value: string): string[] {
     return this.uniqueValues(
       [...value.matchAll(/\bhttps?:\/\/[^\s"'<>|)]+/gi)].map((match) => match[0].replace(/[.,;]+$/g, '')),
@@ -1650,7 +2051,10 @@ export class App {
   }
 
   private buildEvidencePayload(sources: StagedSource[]): string {
-    return sources.map((source, index) => [
+    const inventory = this.systematicDiscoveryInventory(sources);
+    return [
+      inventory,
+      ...sources.map((source, index) => [
       `--- SOURCE ${index + 1}: ${source.path} ---`,
       `name: ${source.name}`,
       `extension: ${source.extension || 'none'}`,
@@ -1658,7 +2062,49 @@ export class App {
       `status: ${source.status}`,
       '',
       source.text
-    ].join('\n')).join('\n\n').slice(0, 80000);
+      ].join('\n'))
+    ].join('\n\n').slice(0, 180000);
+  }
+
+  private systematicDiscoveryInventory(sources: StagedSource[]): string {
+    const text = sources.map((source) => source.text).join('\n');
+    const workbookSheets = this.extractWorkbookSheets(text);
+    const worksheetObjects = this.uniqueRegexMatches(text, /^Worksheet\s+([^\n\r(]+)\s+\((xl\/worksheets\/[^)]+)\):\s*dimension\s*([^;]+)/gmi, 80);
+    const tableObjects = this.uniqueRegexMatches(text, /\b(xl\/tables\/table\d+\.xml)\b/gi, 80);
+    const pivotObjects = this.uniqueRegexMatches(text, /\b(xl\/(?:pivotTables|pivotCache)\/[^\s:]+)\b/gi, 80);
+    const connectionObjects = this.uniqueRegexMatches(text, /^Connection\s+\d+:\s*([^\n\r]+)/gmi, 80);
+    const queryObjects = [
+      ...this.uniqueRegexMatches(text, /^Power Query candidate\s+\d+:\s*([^\n\r]+)/gmi, 80),
+      ...this.uniqueRegexMatches(text, /^Query table for\s+[^:]+:\s*([^\n\r]+)/gmi, 80)
+    ];
+    const externalRefs = [
+      ...this.uniqueRegexMatches(text, /^External link\s+\d+:\s*([^\n\r]+)/gmi, 80),
+      ...this.uniqueRegexMatches(text, /^External URL reference\s+\d+:\s*([^\n\r]+)/gmi, 120)
+    ];
+    const definedNames = this.extractEvidenceList(text, /Defined names:\s*([^\n\r]+)/i, 120);
+    const vbaModules = this.uniqueRegexMatches(text, /^VBA module code:\s*([^\n\r(]+)/gmi, 80);
+    const vbaProcedures = this.extractEvidenceList(text, /VBA procedures:\s*([^\n\r]+)/i, 160);
+    const formulaCells = this.uniqueRegexMatches(text, /(?:formulas:\s*|; formulas:\s*)([^\n\r;]+)/gi, 120)
+      .filter((entry) => !/^none detected$/i.test(entry));
+
+    return [
+      '=== SYSTEMATIC DISCOVERY INVENTORY - BEFORE DISTILLERY SYNTHESIS ===',
+      'The following inventory was harvested deterministically from the uploaded sources before any synthesis pass. The Distillery must analyze these objects as evidence and may not replace them with guessed objects.',
+      `Source files: ${sources.map((source) => `${source.path} [${source.extension || 'no extension'}, ${source.status}, ${source.size} bytes]`).join(' | ') || 'none'}`,
+      `Workbook sheets: ${workbookSheets.join(' | ') || 'none detected'}`,
+      `Worksheet objects: ${worksheetObjects.join(' | ') || 'none detected'}`,
+      `Workbook tables: ${tableObjects.join(' | ') || 'none detected'}`,
+      `Pivot/cache objects: ${pivotObjects.join(' | ') || 'none detected'}`,
+      `Defined names: ${definedNames.join(' | ') || 'none detected'}`,
+      `Formula-bearing regions: ${formulaCells.join(' | ') || 'none detected'}`,
+      `External connections: ${connectionObjects.join(' | ') || 'none detected'}`,
+      `Power Query / query-table objects: ${queryObjects.join(' | ') || 'none detected'}`,
+      `External links / URLs / file refs: ${externalRefs.join(' | ') || 'none detected'}`,
+      `VBA modules with source evidence: ${vbaModules.join(' | ') || 'none detected'}`,
+      `VBA procedures: ${vbaProcedures.join(' | ') || 'none detected'}`,
+      'Classification rule: sheets, tables, defined names, formulas, query objects, external links, VBA modules, VBA procedures, and generated outputs are separate node classes with separate lineage, failure impact, and action records.',
+      '=== END SYSTEMATIC DISCOVERY INVENTORY ==='
+    ].join('\n');
   }
 
   private extensionFor(file: File): string {
@@ -2957,6 +3403,9 @@ export class App {
     ].slice(0, 20);
     const queryTableTexts = this.uniqueRegexMatches(evidence, /^Query table for\s+[^:]+:\s*([^\n\r]+)/gmi, 10);
     const vbaProcedures = this.extractEvidenceList(evidence, /VBA procedures:\s*([^\n\r]+)/i, 16);
+    const vbaModules = this.uniqueRegexMatches(evidence, /^VBA module code:\s*([^\n\r(]+)/gmi, 16);
+    const vbaMarkers = this.uniqueRegexMatches(evidence, /^VBA transformation markers in [^:]+:\s*([^\n\r]+)/gmi, 20);
+    const vbaSqlStrings = this.uniqueRegexMatches(evidence, /^VBA SQL strings in [^:]+:\s*([^\n\r]+)/gmi, 20);
     const definedNames = this.extractEvidenceList(evidence, /Defined names:\s*([^\n\r]+)/i, 16);
     const hasVbaProject = /VBA project:\s*present/i.test(evidence);
     const formulaSheets = worksheetMatches.filter((sheet) => !/^none detected$/i.test(sheet.formulas.trim())).slice(0, 8);
@@ -3012,11 +3461,21 @@ export class App {
     });
 
     if (hasVbaProject) {
-      items.push(this.sourceFallbackItem('VBA-001', 'vba_project', `${sourceName} VBA project`, `Macro-enabled workbook project detected in ${sourceName}`, 80, 'high', ['SRC-001'], vbaProcedures.length ? ['VBA-PROC-001'] : ['OUT-001']));
+      items.push(this.sourceFallbackItem('VBA-001', 'vba_project', `${sourceName} VBA project`, `Macro-enabled workbook project detected in ${sourceName}`, vbaModules.length ? 88 : 80, 'high', ['SRC-001'], vbaModules.length ? ['VBA-MOD-001'] : vbaProcedures.length ? ['VBA-PROC-001'] : ['OUT-001']));
     }
 
+    vbaModules.forEach((moduleName, index) => {
+      items.push(this.sourceFallbackItem(`VBA-MOD-${String(index + 1).padStart(3, '0')}`, 'vba_module', moduleName, `VBA module source extracted and code-scanned from ${sourceName}`, 88, 'high', ['VBA-001'], vbaProcedures.length ? ['VBA-PROC-001'] : ['OUT-001']));
+    });
+
     vbaProcedures.forEach((procedure, index) => {
-      items.push(this.sourceFallbackItem(`VBA-PROC-${String(index + 1).padStart(3, '0')}`, 'vba_procedure', procedure, `Recovered VBA procedure candidate from ${sourceName}`, 72, 'high', ['VBA-001'], ['OUT-001']));
+      const moduleId = vbaModules.length ? `VBA-MOD-${String(Math.min(index + 1, vbaModules.length)).padStart(3, '0')}` : 'VBA-001';
+      items.push(this.sourceFallbackItem(`VBA-PROC-${String(index + 1).padStart(3, '0')}`, 'vba_procedure', procedure, `Recovered VBA procedure candidate from ${sourceName}`, vbaModules.length ? 86 : 72, 'high', [moduleId], ['OUT-001']));
+    });
+
+    [...vbaMarkers, ...vbaSqlStrings].forEach((marker, index) => {
+      const moduleId = vbaModules.length ? `VBA-MOD-${String((index % vbaModules.length) + 1).padStart(3, '0')}` : 'VBA-001';
+      items.push(this.sourceFallbackItem(`VBA-RULE-${String(index + 1).padStart(3, '0')}`, /select|insert|update|delete|from|where/i.test(marker) ? 'vba_sql_string' : 'vba_transformation_marker', marker, `Deterministic VBA code scan found transformation, SQL, file, refresh, or automation evidence in ${sourceName}`, 84, 'high', [moduleId], ['OUT-001']));
     });
 
     definedNames.forEach((definedName, index) => {

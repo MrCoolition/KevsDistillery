@@ -196,9 +196,11 @@ function buildInstructions(sourceKind, sourceName, pass = null) {
     'Return one valid JSON object only. No markdown, no prose outside JSON, no placeholder strings.',
     'This is production data discovery for engineers migrating current-state processes into Snowflake using Fivetran, dbt, SQL, and Snowpark.',
     'Analyze retrieved evidence, not just filenames. Treat filenames as weak evidence unless supported by extracted content. Never invent facts.',
+    'Systematic extraction comes first: the payload may include a SYSTEMATIC DISCOVERY INVENTORY, workbook XML objects, connection definitions, query-table metadata, Power Query candidates, VBA module source excerpts, and code-scan markers. Treat those deterministic objects as primary evidence.',
     'Never treat generated package artifact names as source objects, business outputs, or critical outputs. 01_Executive_Decision_Brief.pdf, Diagram Pack, Action Backlog, Evidence Archive, and Metadata Manifest are deliverables, not discovered source nodes.',
     'For Excel workbooks, sheet nodes may only come from explicit Workbook sheet map / workbook <sheet> evidence. Namespace/function tokens such as microsoft.com:RD, microsoft.com:Single, microsoft.com:FV, LET_WF, LAMBDA_WF, ARRAYTEXT_WF, and _xlfn.* are not worksheet names.',
     'External connections, external links, query tables, Power Query candidates, VBA projects/procedures, defined names, pivots, formulas, hyperlinks, and worksheet dimensions must be separate object types with their own evidence and next action.',
+    'When VBA source excerpts are present, inspect the code. Extract procedures, call graph hints, SQL strings, file/path/URL references, RefreshAll/query-table/connection calls, Range/Cells writes, formula writes, output exports, error handlers, event handlers, controls, and transformation rules as canonical items and transformationsRules.',
     'If evidence is incomplete, create a blocker-backed finding with the exact smallest source artifact needed to finish the discovery.',
     'A finding is unfinished unless it has evidence, confidence, and next action.',
     'Use one canonical node-edge model to drive the report, auto-documentation, diagrams, recursive lineage, financial exposure, and remediation backlog.',
@@ -904,6 +906,8 @@ function buildSourceEvidenceDelta(payload = {}) {
   ].slice(0, 30);
   const queryTableEvidence = uniqueMatches(extractedText, /^Query table for\s+[^:]+:\s*([^\n\r]+)/gmi, 20);
   const vbaProcedures = extractListAfter(extractedText, /VBA procedures:\s*([^\n\r]+)/i, 40).filter((value) => !/^none recovered|not detected|unknown$/i.test(value));
+  const vbaModuleEvidence = parseVbaModuleEvidence(extractedText, 30);
+  const vbaProcedureNames = mergePrimitiveArrays([vbaProcedures, vbaModuleEvidence.flatMap((module) => module.procedures)]).slice(0, 80);
   const definedNames = extractListAfter(extractedText, /Defined names:\s*([^\n\r]+)/i, 40);
   const hasVbaProject = /VBA project:\s*present/i.test(extractedText);
   const recoveredTerms = recoveredEvidenceTerms(extractedText, 40);
@@ -1039,21 +1043,53 @@ function buildSourceEvidenceDelta(payload = {}) {
     action: 'Extract query text, connection target, refresh settings, destination range, and downstream formula/output dependencies.'
   }));
 
-  const vbaNodes = hasVbaProject ? [
+  const vbaProjectNode = hasVbaProject || vbaModuleEvidence.length ? [
     canonicalItem({
       id: 'VBA-001',
       type: 'vba_project',
       name: `${sourceName} VBA project`,
       businessPurpose: `Macro project detected in ${sourceName}.`,
       evidenceId,
-      confidence: 80,
+      confidence: vbaModuleEvidence.length ? 88 : 80,
       criticality: 'high',
       upstream: ['SRC-001'],
-      downstream: vbaProcedures.length ? ['VBA-PROC-001'] : ['OUT-001'],
+      downstream: vbaModuleEvidence.length ? ['VBA-MOD-001'] : vbaProcedureNames.length ? ['VBA-PROC-001'] : ['OUT-001'],
       failureImpact: 'VBA can hide refresh orchestration, external calls, file exports, user actions, and business rules.',
-      action: 'Export all modules, worksheet/workbook events, forms, button bindings, references, and macro execution order.'
-    }),
-    ...vbaProcedures.slice(0, 20).map((procedure, index) => canonicalItem({
+      action: vbaModuleEvidence.length
+        ? 'Analyze extracted module source for transformations, file IO, SQL, refresh order, event triggers, call graph, and generated outputs.'
+        : 'Export all modules, worksheet/workbook events, forms, button bindings, references, and macro execution order.'
+    })
+  ] : [];
+
+  const vbaModuleNodes = vbaModuleEvidence.slice(0, 20).map((module, index) => canonicalItem({
+    id: `VBA-MOD-${String(index + 1).padStart(3, '0')}`,
+    type: 'vba_module',
+    name: module.name,
+    businessPurpose: `Extracted VBA module source from ${sourceName}; deterministic code scan found ${module.procedures.length} procedures, ${module.markers.length} transformation/automation markers, ${module.sqlStrings.length} SQL string candidates, and ${module.fileRefs.length} file or URL references.`,
+    evidenceId,
+    confidence: 88,
+    criticality: 'high',
+    upstream: ['VBA-001'],
+    downstream: module.procedures.length ? [`VBA-PROC-${String(index + 1).padStart(3, '0')}-001`] : ['OUT-001'],
+    failureImpact: 'Module code can mutate worksheets, refresh data, write files, run SQL, call external systems, and encode undocumented business rules.',
+    action: 'Review module code, build a call graph, map touched sheets/ranges/files/queries, classify transformations, and translate rebuildable logic into dbt/Snowpark tests.'
+  }));
+
+  const vbaProcedureNodes = vbaModuleEvidence.length
+    ? vbaModuleEvidence.slice(0, 20).flatMap((module, moduleIndex) => module.procedures.slice(0, 16).map((procedure, procIndex) => canonicalItem({
+      id: `VBA-PROC-${String(moduleIndex + 1).padStart(3, '0')}-${String(procIndex + 1).padStart(3, '0')}`,
+      type: 'vba_procedure',
+      name: procedure,
+      businessPurpose: `Procedure ${procedure} recovered from VBA module ${module.name}. Markers: ${module.markers.slice(0, 4).join(' | ') || 'none in excerpt'}.`,
+      evidenceId,
+      confidence: 86,
+      criticality: 'high',
+      upstream: [`VBA-MOD-${String(moduleIndex + 1).padStart(3, '0')}`],
+      downstream: ['OUT-001'],
+      failureImpact: 'Unmapped macro procedures can silently alter workbook state, outputs, files, SQL sources, and refresh order.',
+      action: 'Map procedure callers, touched ranges/sheets, external files, SQL strings, error handlers, and output effects.'
+    })))
+    : vbaProcedureNames.slice(0, 20).map((procedure, index) => canonicalItem({
       id: `VBA-PROC-${String(index + 1).padStart(3, '0')}`,
       type: 'vba_procedure',
       name: procedure,
@@ -1065,8 +1101,49 @@ function buildSourceEvidenceDelta(payload = {}) {
       downstream: ['OUT-001'],
       failureImpact: 'Unmapped macro procedures can silently alter workbook state, outputs, files, and refresh order.',
       action: 'Export procedure body, call graph, triggered event, affected sheets/ranges/files, and replacement design.'
+    }));
+
+  const vbaRuleNodes = vbaModuleEvidence.slice(0, 20).flatMap((module, moduleIndex) => [
+    ...module.markers.slice(0, 12).map((marker, markerIndex) => canonicalItem({
+      id: `VBA-RULE-${String(moduleIndex + 1).padStart(3, '0')}-${String(markerIndex + 1).padStart(3, '0')}`,
+      type: 'vba_transformation_marker',
+      name: `${module.name}: ${marker.slice(0, 80)}`,
+      businessPurpose: `Deterministic VBA code scan found transformation/automation marker in ${module.name}.`,
+      evidenceId,
+      confidence: 84,
+      criticality: 'high',
+      upstream: [`VBA-MOD-${String(moduleIndex + 1).padStart(3, '0')}`],
+      downstream: ['OUT-001'],
+      failureImpact: 'Transformation marker may represent hidden writeback, refresh, file export, calculation, or data mutation logic.',
+      action: 'Classify the marker as transform, refresh, file IO, control, or output generation and map source/target objects.'
+    })),
+    ...module.sqlStrings.slice(0, 8).map((sql, sqlIndex) => canonicalItem({
+      id: `VBA-SQL-${String(moduleIndex + 1).padStart(3, '0')}-${String(sqlIndex + 1).padStart(3, '0')}`,
+      type: 'vba_sql_string',
+      name: `${module.name}: SQL candidate ${sqlIndex + 1}`,
+      businessPurpose: `SQL string recovered from VBA module ${module.name}.`,
+      evidenceId,
+      confidence: 84,
+      criticality: 'high',
+      upstream: [`VBA-MOD-${String(moduleIndex + 1).padStart(3, '0')}`],
+      downstream: ['OUT-001'],
+      failureImpact: 'SQL embedded in VBA can define source filters, joins, deletes, updates, or output creation that must be rebuilt and tested.',
+      action: 'Extract complete SQL text, identify source/target tables, classify DML/DDL/read query, and translate into governed migration logic.'
+    })),
+    ...module.fileRefs.slice(0, 8).map((ref, refIndex) => canonicalItem({
+      id: `VBA-REF-${String(moduleIndex + 1).padStart(3, '0')}-${String(refIndex + 1).padStart(3, '0')}`,
+      type: 'vba_file_reference',
+      name: `${module.name}: ${ref.slice(0, 90)}`,
+      businessPurpose: `File, URL, or path reference recovered from VBA module ${module.name}.`,
+      evidenceId,
+      confidence: 82,
+      criticality: 'high',
+      upstream: [`VBA-MOD-${String(moduleIndex + 1).padStart(3, '0')}`],
+      downstream: ['OUT-001'],
+      failureImpact: 'File/path references can hide upstream extracts, generated outputs, manually maintained dependencies, or audit evidence.',
+      action: 'Confirm file owner, path, cadence, read/write behavior, retention, and migration treatment.'
     }))
-  ] : [];
+  ]).slice(0, 80);
 
   const definedNameNodes = definedNames.slice(0, 20).map((definedName, index) => canonicalItem({
     id: `NAME-${String(index + 1).padStart(3, '0')}`,
@@ -1090,16 +1167,26 @@ function buildSourceEvidenceDelta(payload = {}) {
     evidenceId,
     confidence: index === 0 ? 72 : 64,
     criticality: 'high',
-    upstream: formulaNodes.length ? formulaNodes.map((node) => node.id) : sheetNodes.slice(0, 5).map((node) => node.id),
+    upstream: formulaNodes.length
+      ? formulaNodes.map((node) => node.id)
+      : vbaRuleNodes.length
+        ? vbaRuleNodes.slice(0, 10).map((node) => node.id)
+        : vbaProcedureNodes.length
+          ? vbaProcedureNodes.slice(0, 10).map((node) => node.id)
+          : sheetNodes.slice(0, 5).map((node) => node.id),
     failureImpact: 'If this output is late, wrong, partial, or unauditable, downstream decisions and migration validation are at risk.',
     action: 'Confirm output owner, SLA, consumers, refresh cadence, dollar exposure inputs, and acceptance criteria.'
   }));
 
+  const vbaNodes = [...vbaProjectNode, ...vbaModuleNodes, ...vbaProcedureNodes, ...vbaRuleNodes];
   const items = [sourceNode, inventoryNode, ...sheetNodes, ...metadataNodes, ...connectionNodes, ...externalLinkNodes, ...queryTableNodes, ...powerQueryNodes, ...definedNameNodes, ...vbaNodes, ...formulaNodes, ...outputNodes];
   const relationships = [
     relationship('REL-SRC-INV', 'SRC-001', 'INV-001', 'contains', evidenceId, 86),
     ...sheetNodes.map((node, index) => relationship(`REL-SRC-SHEET-${index + 1}`, 'SRC-001', node.id, 'contains_sheet', evidenceId, 84)),
-    ...[...metadataNodes, ...connectionNodes, ...externalLinkNodes, ...queryTableNodes, ...powerQueryNodes, ...definedNameNodes, ...vbaNodes].map((node, index) => relationship(`REL-META-INV-${index + 1}`, node.id, 'INV-001', 'documents_metadata', evidenceId, 76)),
+    ...[...metadataNodes, ...connectionNodes, ...externalLinkNodes, ...queryTableNodes, ...powerQueryNodes, ...definedNameNodes, ...vbaProjectNode].map((node, index) => relationship(`REL-META-INV-${index + 1}`, node.id, 'INV-001', 'documents_metadata', evidenceId, 76)),
+    ...vbaModuleNodes.map((node, index) => relationship(`REL-VBA-MOD-${index + 1}`, 'VBA-001', node.id, 'contains_vba_module', evidenceId, 88)),
+    ...vbaProcedureNodes.map((node, index) => relationship(`REL-VBA-PROC-${index + 1}`, safeArray(node.upstream)[0] || 'VBA-001', node.id, 'contains_vba_procedure', evidenceId, 86)),
+    ...vbaRuleNodes.map((node, index) => relationship(`REL-VBA-RULE-${index + 1}`, safeArray(node.upstream)[0] || 'VBA-001', node.id, 'documents_vba_logic', evidenceId, 84)),
     ...formulaNodes.map((node, index) => relationship(`REL-INV-FORM-${index + 1}`, 'INV-001', node.id, 'extracts_formula_logic', evidenceId, 78)),
     ...outputNodes.flatMap((output, outputIndex) => {
       const upstream = safeArray(output.upstream);
@@ -1298,7 +1385,8 @@ function buildSourceEvidenceDelta(payload = {}) {
         evidence_id: evidenceId
       }))
     ],
-    transformationsRules: formulaNodes.map((node, index) => ({
+    transformationsRules: [
+      ...formulaNodes.map((node, index) => ({
       transform_id: `TR-${String(index + 1).padStart(3, '0')}`,
       location: worksheetMatches[index]?.path || node.name,
       logic_type: 'excel_formula',
@@ -1306,7 +1394,26 @@ function buildSourceEvidenceDelta(payload = {}) {
       description: `Formula logic discovered in ${node.name}.`,
       business_meaning: 'Requires analyst interpretation.',
       rebuild_recommendation: 'Translate to dbt SQL or Snowpark with source-controlled tests after formulas and expected outputs are confirmed.'
-    })),
+      })),
+      ...vbaModuleEvidence.slice(0, 20).map((module, index) => ({
+        transform_id: `TR-VBA-${String(index + 1).padStart(3, '0')}`,
+        location: module.name,
+        logic_type: 'vba_module',
+        code_ref: module.code.slice(0, 2200),
+        description: `VBA module ${module.name} contains ${module.procedures.length} procedures, ${module.markers.length} automation/transformation markers, ${module.sqlStrings.length} SQL candidates, and ${module.fileRefs.length} file references.`,
+        business_meaning: 'Macro code may orchestrate refresh, mutate workbook state, call external sources, write outputs, or encode business rules.',
+        rebuild_recommendation: 'Build call graph, classify each procedure, translate data transformations into dbt/Snowpark logic, and retain event/control behavior as tests or orchestration.'
+      })),
+      ...vbaModuleEvidence.flatMap((module, moduleIndex) => module.sqlStrings.slice(0, 8).map((sql, sqlIndex) => ({
+        transform_id: `TR-VBA-SQL-${String(moduleIndex + 1).padStart(3, '0')}-${String(sqlIndex + 1).padStart(3, '0')}`,
+        location: module.name,
+        logic_type: 'vba_sql_string',
+        code_ref: sql.slice(0, 2200),
+        description: `SQL candidate embedded in VBA module ${module.name}.`,
+        business_meaning: 'Embedded SQL can define source extraction, filtering, joins, deletes, updates, or output generation.',
+        rebuild_recommendation: 'Classify SQL command, map source/target objects, and convert to governed SQL/dbt/Snowpark implementation.'
+      })))
+    ],
     failureRisks: [
       {
         id: 'RISK-WORKBOOK-LOGIC',
@@ -1437,6 +1544,68 @@ function extractListAfter(text, regex, limit) {
     .map(cleanName)
     .filter(Boolean)
     .slice(0, limit);
+}
+
+function parseVbaModuleEvidence(text, limit) {
+  const modules = [];
+  const excerptRegex = /^VBA source excerpt\s+([^:\n]+):\n([\s\S]*?)^VBA source excerpt end\s+[^\n]*$/gmi;
+  for (const match of text.matchAll(excerptRegex)) {
+    const rawName = cleanName(match[1]);
+    const code = cleanVbaCode(match[2] || '');
+    if (!code || !/\b(?:Sub|Function|Property\s+(?:Get|Let|Set))\s+[A-Za-z_]|Attribute\s+VB_Name|Option\s+Explicit/i.test(code)) {
+      continue;
+    }
+    const name = cleanName(code.match(/Attribute\s+VB_Name\s*=\s*"([^"]+)"/i)?.[1] || rawName || `VBA module ${modules.length + 1}`);
+    modules.push({
+      name,
+      code: code.slice(0, 18000),
+      procedures: uniqueStrings([...code.matchAll(/^\s*(?:Private\s+|Public\s+|Friend\s+)?(?:Sub|Function|Property\s+(?:Get|Let|Set))\s+([A-Za-z_][A-Za-z0-9_]*)/gmi)].map((procedure) => procedure[1]), 80),
+      calls: uniqueStrings([
+        ...[...code.matchAll(/\bCall\s+([A-Za-z_][A-Za-z0-9_.]*)/gi)].map((call) => `Call ${call[1]}`),
+        ...[...code.matchAll(/\bApplication\.Run\s+["']?([^"'\r\n,)]+)/gi)].map((call) => `Application.Run ${call[1]}`),
+        ...[...code.matchAll(/\b(?:Run|OnAction)\s*=\s*["']([^"']+)/gi)].map((call) => call[1])
+      ], 80),
+      markers: uniqueStrings(code.split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => /Workbook_Open|Worksheet_Change|Worksheet_Calculate|Auto_Open|RefreshAll|QueryTables?|ListObjects?|WorkbookConnection|Connections?\(|PivotTables?|Recordset|ADODB|DAO|CurrentDb|DoCmd|TransferSpreadsheet|OpenDatabase|FileSystemObject|Shell|CreateObject|GetObject|Open\s+.*\s+For\s+|Print\s+#|Write\s+#|SaveAs|ExportAsFixedFormat|CopyFromRecordset|Range\(|Cells\(|\.Formula|\.Value|Replace\(|Split\(|Trim\(|CDate\(|CDbl\(|CLng\(|DateSerial|On Error/i.test(line)),
+        160),
+      sqlStrings: uniqueStrings([...code.matchAll(/"([^"\r\n]*(?:SELECT|INSERT|UPDATE|DELETE|MERGE|FROM|WHERE|JOIN)[^"\r\n]*)"/gi)].map((sql) => sql[1]), 80),
+      fileRefs: uniqueStrings([
+        ...[...code.matchAll(/\bhttps?:\/\/[^\s"'<>|)]+/gi)].map((url) => url[0].replace(/[.,;]+$/g, '')),
+        ...[...code.matchAll(/["']([A-Za-z]:\\[^"']+|\\\\[^"']+|[^"']+\.(?:csv|txt|xlsx|xlsm|xls|accdb|mdb|pdf|xml|json|sql))["']/gi)].map((ref) => ref[1])
+      ], 80)
+    });
+    if (modules.length >= limit) {
+      break;
+    }
+  }
+  return modules;
+}
+
+function cleanVbaCode(value) {
+  return String(value || '')
+    .replace(/\r\n?/g, '\n')
+    .replace(/[^\x09\x0A\x20-\x7E]/g, ' ')
+    .replace(/[ \t]+$/gm, '')
+    .replace(/\n{4,}/g, '\n\n\n')
+    .trim();
+}
+
+function uniqueStrings(values, limit) {
+  const seen = new Set();
+  const results = [];
+  for (const value of values) {
+    const cleaned = cleanName(value);
+    const key = cleaned.toLowerCase();
+    if (cleaned && !seen.has(key)) {
+      seen.add(key);
+      results.push(cleaned);
+    }
+    if (results.length >= limit) {
+      break;
+    }
+  }
+  return results;
 }
 
 function uniqueMatches(text, regex, limit) {
