@@ -458,24 +458,24 @@ export class App {
     const items = delta?.items?.length
       ? this.usableItemRecords(delta.items)
       : this.sourceFallbackItems();
-    const limited = items.slice(0, 10);
-    const columns = limited.length <= 6 ? 3 : 4;
+    const limited = this.preferredPreviewItems(items).slice(0, 9);
+    const columns = limited.length <= 4 ? 2 : 3;
     const xStep = 100 / columns;
     const rows = Math.max(1, Math.ceil(limited.length / columns));
-    const yStep = rows === 1 ? 0 : 56 / (rows - 1);
+    const yStep = rows === 1 ? 0 : 54 / (rows - 1);
 
     return limited.map((item, index) => {
-      const type = this.readString(item, ['type', 'node_type']) || 'object';
+      const type = this.itemType(item) || 'object';
       const column = index % columns;
       const row = Math.floor(index / columns);
       return {
         id: this.readString(item, ['id', 'item_id', 'node_id']) || `N${index + 1}`,
-        label: this.readString(item, ['name', 'object_name', 'title']) || `Node ${index + 1}`,
+        label: this.nodeName(item, `Node ${index + 1}`),
         type,
         tone: this.toneForType(type),
         confidence: this.readNumber(item, ['confidence']),
-        x: 6 + column * xStep,
-        y: rows === 1 ? 38 : 18 + row * yStep
+        x: 7 + column * xStep,
+        y: rows === 1 ? 38 : 17 + row * yStep
       };
     });
   });
@@ -500,7 +500,7 @@ export class App {
           this.readString(relationship, ['id', 'relationship_id']) || `REL-${index + 1}`,
           fromNode,
           toNode,
-          this.readString(relationship, ['type', 'edgeType', 'relationship_type']) || 'depends on',
+          this.relationshipTypeLabel(this.readString(relationship, ['type', 'edgeType', 'relationship_type']) || 'depends on'),
           'graph'
         );
       })
@@ -1008,7 +1008,7 @@ export class App {
   }
 
   shouldVisualizeSection(title: string): boolean {
-    return /data flow|process flow|lineage|source-of-truth|system and artifact/i.test(title);
+    return /data flow and process flow|recursive lineage/i.test(title);
   }
 
   itemById(id: string): DiscoveryItem | undefined {
@@ -1707,92 +1707,474 @@ export class App {
     const failureRisks = this.operationalRiskRecords((delta as Record<string, unknown>)['failureRisks']);
     const openQuestions = this.operationalQuestionRecords((delta as Record<string, unknown>)['openQuestions']);
     const deltaRecord = delta as Record<string, unknown>;
-    const systems = this.listText(deltaRecord['systemsInScope'], this.knownArtifacts().join(', '));
-    const criticalOutputs = this.listText(deltaRecord['criticalOutputs'], this.targetOutputs().join(', '));
-    const itemLabels = this.nodeLabelMap(items);
+    const sourceNames = this.sourceArtifactNames(items);
+    const sheetNames = this.itemNamesByType(items, /sheet|table|entity/i, 12);
+    const logicNames = this.logicObjectNames(items, 10);
+    const outputNames = this.outputObjectNames(deltaRecord, items, 8);
+    const confidence = this.averageConfidence(items);
+    const coverage = this.sectionBody([
+      `${items.length} canonical nodes and ${relationships.length} evidence-backed relationships are in the active discovery graph.`,
+      `${evidenceIndex.length || this.evidenceFromItems(items).length} evidence references are attached to the model; ${backlog.length} engineering actions are ready for triage.`,
+      `Coverage posture: ${logicNames.length ? 'logic and dependency evidence detected' : 'object inventory detected; logic extraction still needs native metadata exports'}; confidence baseline ${confidence !== null ? `${confidence}%` : 'unscored'}.`
+    ]);
+    const decision = this.operationalDecisionText(delta.decisionRequired);
 
     return [
       {
         title: 'Executive Snapshot',
-        body: this.cleanDisplayText(`${this.labelFor(delta.processName) || this.importSourceName()} was analyzed for ${this.labelFor(delta.businessFunction) || 'data discovery and migration readiness'}. Risk is ${this.labelFor(delta.overallRiskRating) || 'unscored'}. ${this.asText(delta.recommendation) || 'Review generated items, lineage, artifacts, and actions.'}`),
-        confidence: null,
+        body: this.sectionBody([
+          `Source/process: ${this.labelFor(delta.processName) || sourceNames[0] || this.importSourceName() || 'submitted discovery source'}.`,
+          `Business function: ${this.labelFor(delta.businessFunction) || 'data discovery, migration readiness, and current-state documentation'}.`,
+          `Risk rating: ${this.labelFor(delta.overallRiskRating) || 'pending owner validation'}. Recommendation: ${this.cleanSentence(this.asText(delta.recommendation) || 'validate source ownership, preserve lineage evidence, and convert the discovered logic into governed migration actions')}.`,
+          `Critical outputs: ${this.formatList(outputNames, 6) || 'not named yet; classify authoritative reports and exported files before migration design'}.`,
+          decision ? `Decision needed: ${decision}.` : 'Decision needed: approve the next evidence collection pass and confirm which discovered outputs are business-critical.'
+        ]),
+        confidence,
         evidenceIds: []
       },
       {
         title: 'Scope Coverage and Confidence',
-        body: `${items.length} canonical items, ${relationships.length} relationships, ${artifacts.length} artifacts, ${backlog.length} backlog actions, and ${evidenceIndex.length} evidence records were generated from submitted evidence. Systems in scope: ${systems || 'not specified'}.`,
-        confidence: null,
+        body: coverage,
+        confidence,
         evidenceIds: []
       },
       {
         title: 'Business Mission of the Process',
-        body: `${this.labelFor(delta.businessFunction) || 'The submitted sources support data discovery and modernization planning.'} Critical outputs: ${criticalOutputs || 'not specified'}.`,
-        confidence: null,
+        body: this.sectionBody([
+          this.cleanSentence(this.labelFor(delta.businessFunction) || `${sourceNames[0] || 'The source'} supports operational reporting, planning, reconciliation, or decision workflow that needs to be made migration-ready`),
+          `Downstream value: ${outputNames.length ? this.formatList(outputNames, 5) : 'classify reports, dashboards, exports, and decision outputs from owner evidence'}.`,
+          `Operating cadence: not proven in the submitted evidence; collect trigger, SLA, refresh window, approval path, and exception owner for every critical output.`
+        ]),
+        confidence,
         evidenceIds: []
       },
       {
         title: 'Current-State Operating Model',
-        body: `Current state is represented by ${items.length} nodes and ${relationships.length} edges. The strongest discovered objects are ${items.slice(0, 4).map((item) => this.readString(item, ['name'])).filter(Boolean).join(', ') || 'not yet named'}.`,
-        confidence: null,
+        body: this.sectionBody([
+          `Trigger: ${sourceNames[0] || this.importSourceName() || 'uploaded source'} is the discovered operating container; trigger/cadence must be confirmed with the process owner.`,
+          `Actor and handoff: owner is currently inferred from source evidence; assign a named business owner, technical steward, and approver before engineering migration.`,
+          `Inputs: ${this.formatList(sourceNames, 4) || 'source artifacts'} with ${sheetNames.length} discovered sheet/table/entity nodes.`,
+          `Processing: ${logicNames.length ? this.formatList(logicNames, 5) : 'no formula, VBA, query, macro, or connection objects are proven in the active graph; treat logic as a high-priority evidence gap'}.`,
+          `Outputs and exceptions: ${outputNames.length ? this.formatList(outputNames, 5) : 'output candidates are not yet owner-certified'}; failed refresh, changed workbook structure, missing external links, and unauditable manual edits are the default exception paths until controls are proven.`
+        ]),
+        confidence,
         evidenceIds: []
       },
       {
         title: 'System and Artifact Landscape',
-        body: `Artifacts in scope: ${systems || 'source files and generated canonical evidence'}. Generated outputs cover executive reporting, current-state documentation, workbook inventory, diagrams, impact model, backlog, evidence archive, and manifest.`,
-        confidence: null,
+        body: this.sectionBody(this.systemLandscapeLines(deltaRecord, items)),
+        confidence,
         evidenceIds: []
       },
       {
         title: 'Data Flow and Process Flow Summary',
-        body: relationships.length
-          ? relationships.slice(0, 5).map((relationship) => this.relationshipDisplay(relationship, itemLabels)).join('\n')
-          : 'Data flow requires additional source metadata before edges can be confirmed.',
-        confidence: null,
+        body: this.sectionBody(this.flowSummaryLines(relationships, items, 7)),
+        confidence,
         evidenceIds: []
       },
       {
         title: 'Transformations and Business Logic',
-        body: items.filter((item) => /query|macro|vba|sql|transform|rule|report/i.test(JSON.stringify(item))).slice(0, 4).map((item) => this.readString(item, ['name'])).filter(Boolean).join(', ') || 'Transformation logic requires query, macro, VBA, formula, or SQL exports to finish.',
-        confidence: null,
+        body: this.sectionBody(this.businessLogicLines(items)),
+        confidence,
         evidenceIds: []
       },
       {
         title: 'Recursive Lineage and Source-of-Truth Assessment',
-        body: `Lineage has ${relationships.length} discovered relationships. Branches without exported object metadata remain inferred until terminal source systems, manual entry points, or approved blockers are documented.`,
-        confidence: null,
+        body: this.sectionBody([
+          `Lineage status: ${relationships.length} discovered relationships connect source artifacts, discovered objects, logic candidates, and output candidates.`,
+          `Source-of-truth assessment: ${sourceNames.length ? this.formatList(sourceNames, 4) : 'source owner evidence'} is the current candidate set; terminal system-of-record, third-party feed, manual-entry point, or approved blocker must be assigned to every branch.`,
+          `Unresolved branches: ${logicNames.length ? 'logic-bearing nodes require owner validation, code export, and output reconciliation' : 'object inventory needs native metadata export before transformation lineage can be considered confirmed'}.`,
+          `Migration readiness rule: no Fivetran, dbt, SQL, or Snowpark rebuild should proceed until the branch has evidence, confidence, owner, failure impact, and next action.`
+        ]),
+        confidence,
         evidenceIds: []
       },
       {
         title: 'Controls, Exceptions, and Failure Modes',
-        body: failureRisks.length
-          ? failureRisks.slice(0, 3).map((risk) => this.readString(risk, ['scenario', 'risk', 'name'])).join('; ')
-          : 'No complete control log was supplied. Control and exception evidence should be collected for every critical output.',
-        confidence: null,
+        body: this.sectionBody(this.controlFailureLines(failureRisks, items, outputNames)),
+        confidence,
         evidenceIds: []
       },
       {
         title: 'Financial Impact and Business Exposure',
-        body: this.exposureSummary(delta.estimatedDollarExposure) || 'Dollar exposure needs business volume, unit value, recovery labor, SLA, penalty, customer, and compliance inputs before it can be priced.',
-        confidence: null,
+        body: this.sectionBody(this.financialExposureLines(delta.estimatedDollarExposure, outputNames)),
+        confidence,
         evidenceIds: []
       },
       {
         title: 'Recommendations and Action Plan',
-        body: backlog.length
-          ? backlog.slice(0, 4).map((action) => this.readString(action, ['title', 'action', 'summary'])).join('; ')
-          : this.asText(delta.recommendation) || 'Confirm evidence gaps, export native metadata, and prioritize migration actions.',
-        confidence: null,
+        body: this.sectionBody(this.actionPlanLines(backlog, delta.recommendation)),
+        confidence,
         evidenceIds: []
       },
       {
         title: 'Open Questions and Decisions Needed',
-        body: openQuestions.length
-          ? openQuestions.slice(0, 4).map((question) => this.readString(question, ['question', 'text', 'decision'])).join('; ')
-          : delta.decisionRequired || 'Confirm ownership, unresolved evidence gaps, and migration action priority.',
-        confidence: null,
+        body: this.sectionBody(this.openQuestionLines(openQuestions, decision)),
+        confidence,
         evidenceIds: []
       }
     ];
+  }
+
+  private sectionBody(lines: string[]): string {
+    return lines
+      .map((line) => this.cleanDisplayText(line))
+      .filter(Boolean)
+      .join('\n');
+  }
+
+  private sourceArtifactNames(items: Record<string, unknown>[], limit = 6): string[] {
+    const names = this.uniqueValues(
+      items
+        .filter((item) => {
+          const type = this.itemType(item).toLowerCase();
+          return (/^(source|workbook|database|access|excel|file|document)$/.test(type) || /source artifact|uploaded source/i.test(this.readString(item, ['businessPurpose', 'purpose', 'description'])))
+            && !/inventory|metadata|generated/i.test(type);
+        })
+        .map((item) => this.nodeName(item, ''))
+        .filter((name) => Boolean(name) && !this.isGeneratedArtifactName(name.toLowerCase())),
+      limit
+    );
+    return names.length ? names : this.uniqueValues([this.importSourceName(), ...this.knownArtifacts()], limit);
+  }
+
+  private itemNamesByType(items: Record<string, unknown>[], pattern: RegExp, limit: number): string[] {
+    return this.uniqueValues(
+      items
+        .filter((item) => pattern.test(this.itemType(item)) || pattern.test(this.nodeName(item, '')))
+        .map((item) => this.nodeName(item, ''))
+        .filter((name) => Boolean(name) && !this.isGeneratedArtifactName(name.toLowerCase())),
+      limit
+    );
+  }
+
+  private logicObjectNames(items: Record<string, unknown>[], limit: number): string[] {
+    const logicItems = items.filter((item) => {
+      const type = this.itemType(item).toLowerCase();
+      if (/source_inventory|^source$|^workbook$|^sheet$/.test(type)) {
+        return /formula|named_range|vba|macro|query|connection|external|sql|transform|rule/i.test(type);
+      }
+      const search = `${type} ${this.nodeName(item, '')} ${this.readString(item, ['businessPurpose', 'purpose', 'description'])}`;
+      return /power query|power_query|query table|query_table|external connection|external_connection|external link|external_link|vba|macro|formula|named range|named_range|sql|transform|rule|connection|pivot/i.test(search);
+    });
+    return this.uniqueValues(logicItems.map((item) => this.shortObjectName(this.nodeName(item, ''))), limit);
+  }
+
+  private outputObjectNames(deltaRecord: Record<string, unknown>, items: Record<string, unknown>[], limit: number): string[] {
+    const declaredOutputs = this.listText(deltaRecord['criticalOutputs'])
+      .split(/\s*,\s*|\s*;\s*/)
+      .map((name) => this.cleanDisplayText(name))
+      .filter(Boolean);
+    const inferredOutputs = this.itemNamesByType(items, /output|report|dashboard|export|artifact/i, limit)
+      .filter((name) => !this.isGeneratedArtifactName(name));
+    return this.uniqueValues([...declaredOutputs, ...inferredOutputs, ...this.targetOutputs()], limit);
+  }
+
+  private averageConfidence(items: Record<string, unknown>[]): number | null {
+    const scores = items
+      .map((item) => this.readNumber(item, ['confidence']))
+      .filter((score): score is number => score !== null && Number.isFinite(score));
+    if (!scores.length) {
+      return null;
+    }
+    return Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length);
+  }
+
+  private systemLandscapeLines(deltaRecord: Record<string, unknown>, items: Record<string, unknown>[]): string[] {
+    const sources = this.sourceArtifactNames(items, 6);
+    const sheets = this.itemNamesByType(items, /sheet/i, 14);
+    const tables = this.itemNamesByType(items, /table|entity/i, 10).filter((name) => !sheets.includes(name));
+    const logic = this.logicObjectNames(items, 10);
+    const external = this.itemNamesByType(items, /external|connection|query_table|power_query|link/i, 8);
+    const named = this.itemNamesByType(items, /named_range|formula|vba|macro/i, 8);
+    const systems = this.listText(deltaRecord['systemsInScope']).split(/\s*,\s*/).filter(Boolean);
+
+    return [
+      `Source artifacts: ${this.formatList(sources.length ? sources : systems, 6) || 'submitted source files'}.`,
+      `Discovered worksheet/table surface: ${this.formatList([...sheets, ...tables], 12) || 'no sheet or table inventory attached yet'}.`,
+      `Logic and dependency surface: ${this.formatList([...logic, ...named], 10) || 'no proven VBA, Power Query, formula, named range, macro, or SQL object in the active evidence'}.`,
+      `External references and connections: ${this.formatList(external, 8) || 'none proven; verify workbook connections, external links, query tables, and source URLs through native export'}.`,
+      `Traceability rule: every artifact above must carry owner, evidence, confidence, criticality, upstream/downstream relationship, failure impact, dollar exposure, and recommended action before it is finished.`
+    ];
+  }
+
+  private flowSummaryLines(relationships: Record<string, unknown>[], items: Record<string, unknown>[], limit: number): string[] {
+    if (!relationships.length) {
+      return ['No relationships were proven from the submitted evidence; collect native source metadata before lineage is treated as authoritative.'];
+    }
+
+    const labels = this.nodeLabelMap(items);
+    const byType = new Map<string, Array<{ from: string; to: string; confidence: string }>>();
+    for (const relationship of relationships) {
+      const type = this.relationshipTypeLabel(this.readString(relationship, ['type', 'edgeType', 'relationship_type']) || 'depends on');
+      const fromId = this.readString(relationship, ['fromId', 'from_id', 'from']);
+      const toId = this.readString(relationship, ['toId', 'to_id', 'to']);
+      const from = labels.get(fromId) || fromId;
+      const to = labels.get(toId) || toId;
+      if (!from || !to || this.isGeneratedArtifactName(from) || this.isGeneratedArtifactName(to)) {
+        continue;
+      }
+      const confidence = this.readString(relationship, ['confidence']);
+      const group = byType.get(type) || [];
+      group.push({ from: this.shortObjectName(from), to: this.shortObjectName(to), confidence });
+      byType.set(type, group);
+    }
+
+    const priority = ['contains sheet', 'documents metadata', 'extracts formula logic', 'feeds output', 'imports from', 'exports to', 'depends on'];
+    const ordered = [...byType.entries()].sort(([left], [right]) => {
+      const leftRank = priority.indexOf(left);
+      const rightRank = priority.indexOf(right);
+      return (leftRank === -1 ? 99 : leftRank) - (rightRank === -1 ? 99 : rightRank);
+    });
+
+    return ordered.slice(0, limit).map(([type, edges]) => {
+      const uniqueTargets = this.uniqueValues(edges.map((edge) => edge.to), 8);
+      const uniqueSources = this.uniqueValues(edges.map((edge) => edge.from), 4);
+      const average = this.averageRelationshipConfidence(edges.map((edge) => edge.confidence));
+      return `${this.displayKey(type)}: ${this.formatList(uniqueSources, 2)} connects to ${this.formatList(uniqueTargets, 7)}${average ? ` (${average}% average confidence)` : ''}.`;
+    });
+  }
+
+  private businessLogicLines(items: Record<string, unknown>[]): string[] {
+    const formulas = this.itemNamesByType(items, /formula|named_range|named range/i, 8);
+    const vba = this.itemNamesByType(items, /vba|macro|module|procedure/i, 8);
+    const powerQuery = this.itemNamesByType(items, /power_query|power query|query_table|query table|query|sql/i, 8);
+    const connections = this.itemNamesByType(items, /external_connection|external link|external_link|connection|link/i, 8);
+    const metadata = this.itemNamesByType(items, /workbook_metadata|table|pivot/i, 8).map((name) => this.shortObjectName(name));
+    const lines = [
+      `Formula and named-range evidence: ${this.formatList(formulas, 8) || 'not proven in the active graph'}.`,
+      `VBA and macro evidence: ${this.formatList(vba, 8) || 'not proven in the active graph; export VBA modules if this is macro-enabled'}.`,
+      `Power Query, query table, SQL, and connection logic: ${this.formatList([...powerQuery, ...connections], 10) || 'not proven; verify external links and workbook connections natively'}.`,
+      `Workbook metadata supporting reconstruction: ${this.formatList(metadata, 8) || 'none beyond sheet/object inventory'}.`
+    ];
+    if (!formulas.length && !vba.length && !powerQuery.length && !connections.length) {
+      lines.push('Engineering action: collect workbook XML, connection definitions, Power Query M, VBA modules, named ranges, formulas, refresh order, and sample outputs before rebuild design.');
+    }
+    return lines;
+  }
+
+  private controlFailureLines(failureRisks: Record<string, unknown>[], items: Record<string, unknown>[], outputNames: string[]): string[] {
+    const sourceNames = this.sourceArtifactNames(items, 3);
+    const logicNames = this.logicObjectNames(items, 5);
+    const explicitRisks = failureRisks
+      .map((risk) => this.readString(risk, ['scenario', 'risk', 'name', 'summary', 'effect']))
+      .filter(Boolean)
+      .slice(0, 4);
+    const lines = explicitRisks.map((risk) => `Documented failure scenario: ${this.cleanSentence(risk)}.`);
+    lines.push(`Control coverage: approval, reconciliation, refresh status, exception log, and rollback owner are not complete until evidenced for ${this.formatList(outputNames, 4) || 'each critical output'}.`);
+    lines.push(`Failure mode - source change: ${this.formatList(sourceNames, 2) || 'source artifact'} renamed, moved, edited, or unavailable can break refresh, lineage, and acceptance testing.`);
+    lines.push(`Failure mode - logic drift: ${logicNames.length ? this.formatList(logicNames, 4) : 'hidden formulas, VBA, queries, or manual edits'} can silently change outputs without an auditable control.`);
+    lines.push('Recovery evidence required: last successful run, expected row counts, reconciled output sample, exception owner, manual workaround, and mean-time-to-detect/recover.');
+    return this.uniqueValues(lines, 8);
+  }
+
+  private financialExposureLines(value: unknown, outputNames: string[]): string[] {
+    const record = this.asRecord(value);
+    const bucketLines = Object.keys(record).length
+      ? Object.entries(record).map(([key, entry]) => this.financialBucketLine(key, entry)).filter(Boolean)
+      : [];
+    const outputs = this.formatList(outputNames, 5) || 'critical outputs';
+    const lines = bucketLines.length ? bucketLines : [
+      `Priced exposure is not complete because business volume, unit value, margin, SLA/penalty, customer impact, and recovery labor were not supplied for ${outputs}.`,
+      'Scenario model to price: process does not run, process runs late, process runs with wrong data, process partially runs, and process runs but cannot be audited.',
+      'Required inputs: units affected per run, dollars per unit, gross margin percentage, rework hours, loaded labor rate, penalty/credit exposure, compliance exposure, cash-timing impact, and expected annual frequency.'
+    ];
+    lines.push('Total exposure formula: margin at risk plus labor recovery cost plus penalties or credits plus compliance exposure plus cash-timing impact.');
+    return lines.slice(0, 8);
+  }
+
+  private financialBucketLine(key: string, value: unknown): string {
+    const record = this.asRecord(value);
+    if (!Object.keys(record).length) {
+      return '';
+    }
+    const low = this.moneyOrPending(record['low']);
+    const base = this.moneyOrPending(record['base']);
+    const high = this.moneyOrPending(record['high']);
+    const assumptions = this.readString(record, ['assumptions', 'assumption', 'basis']);
+    return `${this.displayKey(key)}: low/base/high ${low} / ${base} / ${high}${assumptions ? `; assumptions: ${this.cleanSentence(assumptions)}` : ''}.`;
+  }
+
+  private actionPlanLines(backlog: Record<string, unknown>[], recommendation: unknown): string[] {
+    const actions = backlog
+      .map((action) => {
+        const priority = this.readString(action, ['priority']) || 'P1';
+        const owner = this.readString(action, ['owner', 'assignee']) || 'unassigned';
+        const title = this.readString(action, ['title', 'action', 'summary', 'name', 'recommendedAction']);
+        const acceptance = this.readString(action, ['acceptanceCriteria', 'acceptance_criteria', 'doneWhen']);
+        if (!title) {
+          return '';
+        }
+        return `${priority}: ${this.cleanSentence(title)}. Owner: ${owner}. Done when: ${acceptance || 'evidence, confidence, owner, lineage, impact, and next action are attached'}.`;
+      })
+      .filter(Boolean)
+      .slice(0, 6);
+
+    if (actions.length) {
+      return actions;
+    }
+
+    const recommended = this.asText(recommendation);
+    return [
+      `P0: ${this.cleanSentence(recommended || 'Export native object metadata and verify discovered inventory with the process owner')}. Owner: source owner. Done when: source objects, logic, lineage, and outputs are evidence-backed.`,
+      'P0: Build the migration-ready lineage map. Owner: data engineering. Done when every critical output traces upstream to a terminal source or documented blocker.',
+      'P1: Price business exposure. Owner: business/finance. Done when low, base, and high exposure values are attached to each failure scenario.'
+    ];
+  }
+
+  private openQuestionLines(openQuestions: Record<string, unknown>[], decision: string): string[] {
+    const questions = openQuestions
+      .map((question) => this.readString(question, ['question', 'text', 'decision', 'summary']))
+      .filter((question) => Boolean(question) && !this.isRunDiagnosticText(question))
+      .slice(0, 5);
+    if (decision && !this.isRunDiagnosticText(decision)) {
+      questions.unshift(`Decision: ${decision}`);
+    }
+    return questions.length ? questions : [
+      'Ownership: who owns the source, refresh cadence, approval, and business sign-off for each critical output?',
+      'Authority: which tabs, tables, files, queries, or systems are authoritative inputs versus staging, calculation, or output objects?',
+      'Controls: what reconciliations, row counts, validation rules, exception paths, and recovery steps prove the process ran correctly?',
+      'Financial context: what units, dollar values, margins, labor rates, SLA penalties, credits, or compliance exposure price failure?',
+      'Migration decision: what should be retired, stabilized, governed, automated, migrated, or left temporarily as-is?'
+    ];
+  }
+
+  private operationalDecisionText(value: unknown): string {
+    const text = this.cleanSentence(this.asText(value));
+    return text && !this.isRunDiagnosticText(text) ? text : '';
+  }
+
+  private cleanSentence(value: string): string {
+    const text = this.cleanDisplayText(value).replace(/\s*;\s*/g, '; ');
+    if (!text) {
+      return '';
+    }
+    return /[.!?]$/.test(text) ? text.slice(0, -1) : text;
+  }
+
+  private itemType(item: Record<string, unknown>): string {
+    return this.readString(item, ['type', 'node_type', 'object_type', 'itemType']) || 'object';
+  }
+
+  private nodeName(item: Record<string, unknown>, fallback: string): string {
+    return this.readString(item, ['name', 'object_name', 'title', 'label', 'id']) || fallback;
+  }
+
+  private shortObjectName(value: string): string {
+    const text = this.cleanDisplayText(value);
+    if (!text) {
+      return '';
+    }
+    return text
+      .replace(/^.*\//, '')
+      .replace(/\.xml$/i, '')
+      .replace(/^worksheet\d*$/i, 'worksheet')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private formatList(values: string[], limit: number): string {
+    const unique = this.uniqueValues(values.filter(Boolean), limit + 1);
+    if (!unique.length) {
+      return '';
+    }
+    const visible = unique.slice(0, limit);
+    const suffix = unique.length > limit ? `, plus ${unique.length - limit} more` : '';
+    return `${visible.join(', ')}${suffix}`;
+  }
+
+  private relationshipTypeLabel(value: string): string {
+    const normalized = this.cleanDisplayText(value).replace(/[_-]+/g, ' ').toLowerCase();
+    if (/contains sheet/.test(normalized)) {
+      return 'contains sheet';
+    }
+    if (/documents metadata/.test(normalized)) {
+      return 'documents metadata';
+    }
+    if (/extracts formula/.test(normalized)) {
+      return 'extracts formula logic';
+    }
+    if (/feeds output/.test(normalized)) {
+      return 'feeds output';
+    }
+    if (/reads from/.test(normalized)) {
+      return 'reads from';
+    }
+    if (/writes to/.test(normalized)) {
+      return 'writes to';
+    }
+    if (/imports from/.test(normalized)) {
+      return 'imports from';
+    }
+    if (/exports to/.test(normalized)) {
+      return 'exports to';
+    }
+    if (/transforms/.test(normalized)) {
+      return 'transforms';
+    }
+    if (/depends on/.test(normalized)) {
+      return 'depends on';
+    }
+    return normalized || 'depends on';
+  }
+
+  private averageRelationshipConfidence(values: string[]): number | null {
+    const scores = values
+      .map((value) => Number(String(value).replace(/%/g, '')))
+      .filter((value) => Number.isFinite(value));
+    if (!scores.length) {
+      return null;
+    }
+    return Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length);
+  }
+
+  private moneyOrPending(value: unknown): string {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value === 0 ? '$0' : value.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+    }
+    if (typeof value === 'string' && value.trim() && Number.isFinite(Number(value))) {
+      const numeric = Number(value);
+      return numeric === 0 ? '$0' : numeric.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+    }
+    return 'pending';
+  }
+
+  private preferredPreviewItems(items: Record<string, unknown>[]): Record<string, unknown>[] {
+    const selected: Record<string, unknown>[] = [];
+    const seen = new Set<string>();
+    const take = (pattern: RegExp, limit: number): void => {
+      for (const item of items) {
+        const id = this.readString(item, ['id', 'item_id', 'node_id']) || this.nodeName(item, '');
+        const search = `${this.itemType(item)} ${this.nodeName(item, '')}`;
+        if (!id || seen.has(id) || !pattern.test(search) || this.isGeneratedArtifactName(search)) {
+          continue;
+        }
+        seen.add(id);
+        selected.push(item);
+        if (selected.filter((selectedItem) => pattern.test(`${this.itemType(selectedItem)} ${this.nodeName(selectedItem, '')}`)).length >= limit) {
+          break;
+        }
+      }
+    };
+
+    take(/source|workbook|database|access|excel|file|document/i, 1);
+    take(/inventory|metadata/i, 1);
+    take(/power query|power_query|query table|query_table|external|connection|vba|macro|formula|named range|named_range|sql|transform|rule/i, 4);
+    take(/sheet|table|entity/i, 5);
+    take(/output|report|dashboard|export/i, 2);
+
+    for (const item of items) {
+      const id = this.readString(item, ['id', 'item_id', 'node_id']) || this.nodeName(item, '');
+      if (id && !seen.has(id) && !this.isGeneratedArtifactName(this.nodeName(item, ''))) {
+        selected.push(item);
+        seen.add(id);
+      }
+      if (selected.length >= 9) {
+        break;
+      }
+    }
+
+    return selected;
   }
 
   private normalizeReportSection(section: ReportSection, index: number) {
@@ -3084,7 +3466,7 @@ export class App {
   private relationshipDisplay(relationship: Record<string, unknown>, labels: Map<string, string>): string {
     const fromId = this.readString(relationship, ['fromId', 'from_id', 'from']);
     const toId = this.readString(relationship, ['toId', 'to_id', 'to']);
-    const type = this.readString(relationship, ['type', 'edgeType', 'relationship_type']) || 'depends on';
+    const type = this.relationshipTypeLabel(this.readString(relationship, ['type', 'edgeType', 'relationship_type']) || 'depends on');
     const confidence = this.readString(relationship, ['confidence']);
     const from = labels.get(fromId) || fromId || 'unresolved source';
     const to = labels.get(toId) || toId || 'unresolved target';
@@ -3530,7 +3912,11 @@ ${sheetList.map((sheet) => `<Relationship Id="rId${sheet.id}" Type="http://schem
       record['impactIfUnanswered'],
       record['description']
     ].map((value) => this.asText(value)).join(' ');
-    return /ACT-[A-Z_]+-RERUN|RISK-[A-Z_]+-INCOMPLETE|Q-[A-Z_]+-INCOMPLETE|EV-[A-Z_]+-INCOMPLETE|Rerun .*Architect|Rerun .*Lead|Rerun .*Principal|Rerun .*Examiner|Rerun .*Strategist|max_output_tokens|ended incomplete|Distillery response status incomplete|returned valid JSON|documented blocker for this specialist pass/i.test(text);
+    return this.isRunDiagnosticText(text);
+  }
+
+  private isRunDiagnosticText(value: string): boolean {
+    return /ACT-[A-Z_]+-RERUN|RISK-[A-Z_]+-INCOMPLETE|Q-[A-Z_]+-INCOMPLETE|EV-[A-Z_]+-INCOMPLETE|Rerun .*Architect|Rerun .*Lead|Rerun .*Principal|Rerun .*Examiner|Rerun .*Strategist|rerun .*specialist|incomplete specialist pass|proceed with available evidence|max_output_tokens|ended incomplete|Distillery response status incomplete|returned valid JSON|documented blocker for this specialist pass/i.test(value);
   }
 
   private evidenceFromItems(items: Record<string, unknown>[]): Record<string, unknown>[] {

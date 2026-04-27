@@ -653,11 +653,6 @@
                             ></line>
                           }
                         </svg>
-                        @for (edge of reportPreviewEdges(); track edge.id) {
-                          <span class="inline-edge-label" [style.left.%]="edge.labelX" [style.top.%]="edge.labelY">
-                            {{ edge.label }}
-                          </span>
-                        }
                         @for (node of reportPreviewNodes(); track node.id) {
                           <article class="inline-node" [attr.data-tone]="node.tone" [style.left.%]="node.x" [style.top.%]="node.y">
                             <em>{{ node.id }}</em>
