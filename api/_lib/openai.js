@@ -597,7 +597,7 @@ async function startBackgroundSynthesis(payload) {
   }));
 
   if (started.every((entry) => !entry.synthesis.pending)) {
-    return mergeSpecialistSyntheses(started.map((entry) => entry.synthesis));
+    return mergeSpecialistSyntheses(started.map((entry) => entry.synthesis), payload);
   }
 
   return {
@@ -615,7 +615,7 @@ async function startBackgroundSynthesis(payload) {
   };
 }
 
-async function retrieveBackgroundSynthesis(responseRef) {
+async function retrieveBackgroundSynthesis(responseRef, requestPayload = {}) {
   const refs = normalizeResponseRefs(responseRef);
   if (!refs.length) {
     const error = new Error('responseId or responseIds is required.');
@@ -663,7 +663,7 @@ async function retrieveBackgroundSynthesis(responseRef) {
     };
   }
 
-  return mergeSpecialistSyntheses(retrieved.map((entry) => entry.synthesis));
+  return mergeSpecialistSyntheses(retrieved.map((entry) => entry.synthesis), requestPayload);
 }
 
 function normalizeResponseRefs(value) {
@@ -718,29 +718,34 @@ function summarizeStatuses(statuses) {
   return cleaned[0];
 }
 
-function mergeSpecialistSyntheses(syntheses) {
+function mergeSpecialistSyntheses(syntheses, requestPayload = {}) {
   const completed = syntheses.filter((synthesis) => synthesis?.canonicalDelta);
   const deltas = completed.map((synthesis) => synthesis.canonicalDelta);
   const canonical = deltas.find((delta, index) => completed[index]?.passKey === 'canonical') || deltas[0] || {};
+  const sourceFallback = buildSourceEvidenceDelta(requestPayload);
+  const processName = chooseSourceAwareText(deltas, 'processName', canonical.processName, sourceFallback.processName, 'Source discovery run');
+  const businessFunction = chooseSourceAwareText(deltas, 'businessFunction', canonical.businessFunction, sourceFallback.businessFunction, 'Data discovery and migration readiness');
+  const recommendation = chooseSourceAwareText(deltas, 'recommendation', canonical.recommendation, sourceFallback.recommendation, 'Complete evidence-backed discovery, close blockers, and generate the action pack.');
+  const decisionRequired = chooseSourceAwareText(deltas, 'decisionRequired', canonical.decisionRequired, sourceFallback.decisionRequired, 'Confirm owners, source access, and remediation priorities.');
 
   const merged = {
-    processName: chooseBestText(deltas, 'processName') || canonical.processName || 'Distillery discovery run',
-    businessFunction: chooseBestText(deltas, 'businessFunction') || canonical.businessFunction || 'Data discovery and migration readiness',
-    recommendation: chooseBestText(deltas, 'recommendation') || canonical.recommendation || 'Complete evidence-backed discovery, close blockers, and generate the action pack.',
-    decisionRequired: chooseBestText(deltas, 'decisionRequired') || canonical.decisionRequired || 'Confirm owners, source access, and remediation priorities.',
-    systemsInScope: mergePrimitiveArrays(deltas.map((delta) => safeArray(delta.systemsInScope))),
-    criticalOutputs: mergePrimitiveArrays(deltas.map((delta) => safeArray(delta.criticalOutputs))),
+    processName,
+    businessFunction,
+    recommendation,
+    decisionRequired,
+    systemsInScope: mergePrimitiveArrays([...deltas.map((delta) => safeArray(delta.systemsInScope)), safeArray(sourceFallback.systemsInScope)]),
+    criticalOutputs: mergePrimitiveArrays([...deltas.map((delta) => safeArray(delta.criticalOutputs)), safeArray(sourceFallback.criticalOutputs)]),
     overallRiskRating: chooseHighestRisk(deltas) || canonical.overallRiskRating || 'High',
     estimatedDollarExposure: deltas.reduce((accumulator, delta) => deepMerge(accumulator, delta.estimatedDollarExposure || {}), {}),
     executiveBrief: deltas.reduce((accumulator, delta) => deepMerge(accumulator, delta.executiveBrief || {}), {}),
-    reportSections: mergeReportSections(deltas),
-    items: mergeArraysByKey(deltas.map((delta) => safeArray(delta.items)), itemKey),
-    relationships: mergeArraysByKey(deltas.map((delta) => safeArray(delta.relationships)), relationshipKey),
+    reportSections: mergeReportSections([...deltas, sourceFallback]),
+    items: mergeArraysByKey([...deltas.map((delta) => safeArray(delta.items)), safeArray(sourceFallback.items)], itemKey).filter((item) => !isInternalDiscoveryRecord(item)),
+    relationships: mergeArraysByKey([...deltas.map((delta) => safeArray(delta.relationships)), safeArray(sourceFallback.relationships)], relationshipKey),
     artifacts: ensureDiscoveryArtifacts(mergeArraysByKey(deltas.map((delta) => safeArray(delta.artifacts)), artifactKey)),
-    backlog: mergeArraysByKey(deltas.map((delta) => safeArray(delta.backlog)), actionKey),
-    evidenceIndex: mergeArraysByKey(deltas.map((delta) => safeArray(delta.evidenceIndex)), evidenceKey),
-    lineageNodes: mergeArraysByKey(deltas.map((delta) => safeArray(delta.lineageNodes)), lineageNodeKey),
-    lineageEdges: mergeArraysByKey(deltas.map((delta) => safeArray(delta.lineageEdges)), lineageEdgeKey),
+    backlog: mergeArraysByKey([...deltas.map((delta) => safeArray(delta.backlog)), safeArray(sourceFallback.backlog)], actionKey),
+    evidenceIndex: mergeArraysByKey([...deltas.map((delta) => safeArray(delta.evidenceIndex)), safeArray(sourceFallback.evidenceIndex)], evidenceKey),
+    lineageNodes: mergeArraysByKey([...deltas.map((delta) => safeArray(delta.lineageNodes)), safeArray(sourceFallback.lineageNodes)], lineageNodeKey),
+    lineageEdges: mergeArraysByKey([...deltas.map((delta) => safeArray(delta.lineageEdges)), safeArray(sourceFallback.lineageEdges)], lineageEdgeKey),
     failureRisks: mergeArraysByKey(deltas.map((delta) => safeArray(delta.failureRisks || delta.failure_risks || delta.failureModes)), failureKey),
     openQuestions: mergeArraysByKey(deltas.map((delta) => safeArray(delta.openQuestions || delta.open_questions)), questionKey)
   };
@@ -760,7 +765,7 @@ function mergeSpecialistSyntheses(syntheses) {
     'failureModes',
     'financialModel'
   ]) {
-    const mergedArray = mergeArraysByKey(deltas.map((delta) => safeArray(delta[key])), genericRecordKey(key));
+    const mergedArray = mergeArraysByKey([...deltas.map((delta) => safeArray(delta[key])), safeArray(sourceFallback[key])], genericRecordKey(key));
     if (mergedArray.length) {
       merged[key] = mergedArray;
     }
@@ -822,6 +827,389 @@ function mergeSpecialistSyntheses(syntheses) {
     canonicalDelta: merged,
     raw: passSummaries
   };
+}
+
+function buildSourceEvidenceDelta(payload = {}) {
+  const extractedText = String(payload.extractedText || '');
+  const sourceName = String(payload.sourceName || firstSourceName(extractedText) || 'Uploaded source');
+  const sourceKind = String(payload.sourceKind || inferSourceKindFromEvidence(extractedText, sourceName));
+  if (!extractedText && !sourceName) {
+    return {};
+  }
+
+  const evidenceId = 'EV-SOURCE-INTAKE';
+  const workbookSheets = extractListAfter(extractedText, /Workbook sheets:\s*([^\n\r]+)/i, 40);
+  const worksheetMatches = [...extractedText.matchAll(/(xl\/worksheets\/[^:\s]+):\s*dimension\s*([^;]+);\s*formulas:\s*([^\n\r]+)/gi)]
+    .slice(0, 30)
+    .map((match, index) => ({
+      id: `WS-${String(index + 1).padStart(3, '0')}`,
+      path: match[1],
+      dimension: match[2],
+      formulas: match[3]
+    }));
+  const metadataPaths = uniqueMatches(extractedText, /\b(xl\/(?:connections|queryTables|queries|pivotTables|pivotCache|externalLinks|customXml|worksheets)\/[^\s:]+)\b/gi, 35);
+  const recoveredTerms = recoveredEvidenceTerms(extractedText, 40);
+  const sheetNames = workbookSheets.length
+    ? workbookSheets
+    : worksheetMatches.map((sheet) => sheet.path.replace(/^.*\//, '').replace(/\.xml$/i, ''));
+  const formulaSheets = worksheetMatches.filter((sheet) => !/^none detected$/i.test(sheet.formulas.trim())).slice(0, 12);
+  const criticalOutputs = deriveCriticalOutputs(payload, sourceName, sheetNames, recoveredTerms);
+
+  const sourceNode = canonicalItem({
+    id: 'SRC-001',
+    type: sourceKind === 'excel' ? 'workbook' : sourceKind || 'file',
+    name: sourceName,
+    businessPurpose: `${sourceName} is the submitted source artifact for this discovery run.`,
+    evidenceId,
+    confidence: extractedText ? 86 : 65,
+    criticality: 'high',
+    downstream: ['INV-001'],
+    failureImpact: 'If this source is misunderstood, engineers will migrate the wrong process, miss dependencies, or rebuild incomplete logic.',
+    action: 'Inventory workbook structure, formulas, connections, controls, outputs, and unresolved blockers from extracted source evidence.'
+  });
+  const inventoryNode = canonicalItem({
+    id: 'INV-001',
+    type: 'source_inventory',
+    name: `${sourceName} extracted inventory`,
+    businessPurpose: 'Browser-side extraction of workbook sheets, dimensions, formulas, strings, and package metadata used as the first-pass discovery inventory.',
+    evidenceId,
+    confidence: extractedText ? 82 : 60,
+    criticality: 'medium',
+    upstream: ['SRC-001'],
+    downstream: formulaSheets.length ? formulaSheets.map((_, index) => `FORM-${String(index + 1).padStart(3, '0')}`) : ['OUT-001'],
+    failureImpact: 'If the inventory is incomplete, lineage and transformation reconstruction remains partial until native metadata exports are supplied.',
+    action: 'Validate extracted inventory against native workbook metadata, named ranges, tables, Power Query, VBA modules, and sample outputs.'
+  });
+
+  const sheetNodes = sheetNames.slice(0, 20).map((sheet, index) => canonicalItem({
+    id: `SHEET-${String(index + 1).padStart(3, '0')}`,
+    type: 'sheet',
+    name: cleanName(sheet),
+    businessPurpose: `Worksheet discovered in ${sourceName}.`,
+    evidenceId,
+    confidence: 84,
+    criticality: index < 5 ? 'medium' : 'low',
+    upstream: ['SRC-001'],
+    downstream: formulaSheets.length ? [`FORM-${String(Math.min(index + 1, formulaSheets.length)).padStart(3, '0')}`] : ['OUT-001'],
+    failureImpact: 'Incorrect sheet interpretation can break workbook lineage, refresh order, output mapping, or migration requirements.',
+    action: 'Classify sheet as input, staging, calculation, control, or output and capture owner and refresh cadence.'
+  }));
+
+  const formulaNodes = formulaSheets.map((sheet, index) => canonicalItem({
+    id: `FORM-${String(index + 1).padStart(3, '0')}`,
+    type: 'formula_block',
+    name: `${sheet.path.replace(/^.*\//, '').replace(/\.xml$/i, '')} formulas`,
+    businessPurpose: 'Formula logic discovered in workbook XML and requiring business interpretation before migration.',
+    evidenceId,
+    confidence: 78,
+    criticality: 'high',
+    upstream: ['INV-001', `SHEET-${String(index + 1).padStart(3, '0')}`],
+    downstream: ['OUT-001'],
+    failureImpact: 'If formulas are rebuilt incorrectly, migrated outputs may silently diverge from the current workbook.',
+    action: 'Extract full formulas with cell addresses, named ranges, precedents, dependents, and expected output examples.'
+  }));
+
+  const metadataNodes = metadataPaths
+    .filter((path) => !/worksheets/i.test(path))
+    .slice(0, 12)
+    .map((path, index) => canonicalItem({
+      id: `META-${String(index + 1).padStart(3, '0')}`,
+      type: metadataType(path),
+      name: path,
+      businessPurpose: `Workbook package metadata discovered in ${sourceName}.`,
+      evidenceId,
+      confidence: 76,
+      criticality: /connection|query|external/i.test(path) ? 'high' : 'medium',
+      upstream: ['SRC-001'],
+      downstream: ['INV-001'],
+      failureImpact: 'Unresolved workbook metadata can hide external sources, refresh dependencies, pivots, or object-level lineage.',
+      action: 'Export and inspect full workbook connection, query, pivot, external link, and VBA metadata.'
+    }));
+
+  const outputNodes = criticalOutputs.slice(0, 8).map((output, index) => canonicalItem({
+    id: `OUT-${String(index + 1).padStart(3, '0')}`,
+    type: 'output',
+    name: cleanName(output),
+    businessPurpose: `Business output candidate inferred from ${sourceName}.`,
+    evidenceId,
+    confidence: index === 0 ? 72 : 64,
+    criticality: 'high',
+    upstream: formulaNodes.length ? formulaNodes.map((node) => node.id) : sheetNodes.slice(0, 5).map((node) => node.id),
+    failureImpact: 'If this output is late, wrong, partial, or unauditable, downstream decisions and migration validation are at risk.',
+    action: 'Confirm output owner, SLA, consumers, refresh cadence, dollar exposure inputs, and acceptance criteria.'
+  }));
+
+  const items = [sourceNode, inventoryNode, ...sheetNodes, ...metadataNodes, ...formulaNodes, ...outputNodes];
+  const relationships = [
+    relationship('REL-SRC-INV', 'SRC-001', 'INV-001', 'contains', evidenceId, 86),
+    ...sheetNodes.map((node, index) => relationship(`REL-SRC-SHEET-${index + 1}`, 'SRC-001', node.id, 'contains_sheet', evidenceId, 84)),
+    ...metadataNodes.map((node, index) => relationship(`REL-META-INV-${index + 1}`, node.id, 'INV-001', 'documents_metadata', evidenceId, 76)),
+    ...formulaNodes.map((node, index) => relationship(`REL-INV-FORM-${index + 1}`, 'INV-001', node.id, 'extracts_formula_logic', evidenceId, 78)),
+    ...outputNodes.flatMap((output, outputIndex) => {
+      const upstream = safeArray(output.upstream);
+      return upstream.slice(0, 8).map((from, index) => relationship(`REL-OUT-${outputIndex + 1}-${index + 1}`, from, output.id, 'feeds_output', evidenceId, 72));
+    })
+  ];
+
+  const reportSections = [
+    reportSection('Executive Snapshot', `${sourceName} was analyzed from uploaded source evidence. The first-pass model identifies ${sheetNodes.length} workbook sheets, ${formulaNodes.length} formula blocks, ${metadataNodes.length} metadata objects, and ${outputNodes.length} output candidates. Confidence is evidence-backed but remains blocker-aware until native workbook tables, named ranges, Power Query, VBA, and sample outputs are exported.`, 82, [evidenceId]),
+    reportSection('System and Artifact Landscape', `${sourceName} is the source artifact in scope. Discovered artifact evidence includes ${sheetNames.slice(0, 10).join(', ') || 'workbook XML'}${metadataNodes.length ? ` plus metadata paths ${metadataNodes.slice(0, 5).map((node) => node.name).join(', ')}` : ''}.`, 82, [evidenceId]),
+    reportSection('Data Flow and Process Flow Summary', relationships.slice(0, 8).map((edge) => `${edge.fromId} ${edge.type} ${edge.toId}`).join('; ') || `${sourceName} contains discovered workbook structures that require confirmed output mapping.`, 78, [evidenceId]),
+    reportSection('Transformations and Business Logic', formulaNodes.length ? `${formulaNodes.length} formula blocks were detected in workbook XML. Full cell-address formulas, named ranges, Power Query, VBA, and manual override zones are required to finish transformation lineage.` : 'No complete formulas, Power Query, or VBA modules were extracted. Export workbook logic to finish transformation lineage.', 76, [evidenceId]),
+    reportSection('Recursive Lineage and Source-of-Truth Assessment', `Lineage starts at ${sourceName}, proceeds through extracted workbook inventory, sheets, metadata, and formula blocks, and currently terminates at inferred output candidates until external connections, source extracts, named ranges, and owner-confirmed outputs are supplied.`, 76, [evidenceId])
+  ];
+
+  return {
+    processName: sourceName,
+    businessFunction: `${sourceKindLabel(sourceKind)} discovery and migration readiness`,
+    recommendation: 'Use the source-specific discovery graph to validate workbook objects, export hidden logic, and confirm output ownership before migration.',
+    decisionRequired: 'Approve native metadata export for tables, named ranges, formulas with addresses, Power Query, VBA, pivots, connections, sample outputs, owners, and SLAs.',
+    systemsInScope: [sourceName, ...sheetNames.slice(0, 20)],
+    criticalOutputs,
+    overallRiskRating: formulaNodes.length || metadataNodes.length ? 'High' : 'Medium',
+    estimatedDollarExposure: {},
+    executiveBrief: {},
+    reportSections,
+    items,
+    relationships,
+    artifacts: [],
+    backlog: [
+      {
+        actionId: 'ACT-SOURCE-METADATA-EXPORT',
+        title: `Export native metadata for ${sourceName}`,
+        mode: 'stabilize',
+        owner: 'Source owner',
+        priority: 'P0',
+        dependency: sourceName,
+        acceptanceCriteria: 'Workbook sheets, tables, named ranges, formulas with addresses, Power Query, VBA, pivots, external links, refresh order, sample outputs, owner, SLA, and control evidence are attached to the discovery run.',
+        linkedItemId: 'SRC-001',
+        summary: 'Complete source metadata is required to move from inferred workbook discovery to migration-grade lineage.'
+      }
+    ],
+    evidenceIndex: [
+      {
+        id: evidenceId,
+        type: 'source_extraction',
+        location: sourceName,
+        description: `Extracted ${extractedText.length} characters from uploaded source evidence.`,
+        relatedObject: 'SRC-001'
+      }
+    ],
+    lineageNodes: items.map((item) => ({
+      node_id: item.id,
+      node_type: item.type,
+      name: item.name,
+      criticality: item.criticality,
+      owner: item.owner,
+      confidence: item.confidence,
+      status: item.status
+    })),
+    lineageEdges: relationships.map((edge) => ({
+      edge_id: edge.id,
+      from_id: edge.fromId,
+      to_id: edge.toId,
+      edge_type: edge.type,
+      confidence: edge.confidence,
+      evidence_id: edge.evidenceId
+    })),
+    excelObjects: [
+      ...sheetNodes.map((node, index) => ({
+        object_id: node.id,
+        workbook_id: 'SRC-001',
+        sheet: node.name,
+        object_type: 'sheet',
+        object_name: node.name,
+        evidence_id: evidenceId,
+        hidden_flag: null
+      })),
+      ...formulaNodes.map((node, index) => ({
+        object_id: node.id,
+        workbook_id: 'SRC-001',
+        sheet: worksheetMatches[index]?.path || '',
+        object_type: 'formula_block',
+        object_name: node.name,
+        formula_ref: worksheetMatches[index]?.formulas?.slice(0, 500) || '',
+        evidence_id: evidenceId
+      }))
+    ],
+    transformationsRules: formulaNodes.map((node, index) => ({
+      transform_id: `TR-${String(index + 1).padStart(3, '0')}`,
+      location: worksheetMatches[index]?.path || node.name,
+      logic_type: 'excel_formula',
+      code_ref: worksheetMatches[index]?.formulas?.slice(0, 500) || '',
+      description: `Formula logic discovered in ${node.name}.`,
+      business_meaning: 'Requires analyst interpretation.',
+      rebuild_recommendation: 'Translate to dbt SQL or Snowpark with source-controlled tests after formulas and expected outputs are confirmed.'
+    })),
+    failureRisks: [
+      {
+        id: 'RISK-WORKBOOK-LOGIC',
+        scenario: `${sourceName} workbook logic is migrated incompletely`,
+        trigger: 'Hidden formulas, macros, Power Query, named ranges, or manual zones are not exported.',
+        effect: 'Migrated outputs silently diverge from current state.',
+        detection: 'Reconcile sample outputs, formula inventory, and owner signoff.',
+        recovery: 'Export complete workbook metadata and rebuild with tests.',
+        impactedOutput: criticalOutputs[0] || sourceName,
+        confidence: 78
+      }
+    ],
+    openQuestions: [
+      {
+        id: 'Q-SOURCE-OWNER',
+        question: `Who owns ${sourceName}, its refresh SLA, and its official business outputs?`,
+        owner: 'Source owner',
+        impactIfUnanswered: 'Lineage, financial exposure, and acceptance criteria remain provisional.'
+      }
+    ]
+  };
+}
+
+function canonicalItem({ id, type, name, businessPurpose, evidenceId, confidence, criticality, upstream = [], downstream = [], failureImpact, action }) {
+  return {
+    id,
+    type,
+    name: cleanName(name),
+    businessPurpose,
+    owner: 'Source owner',
+    evidence: [
+      {
+        id: evidenceId,
+        type: 'source_extraction',
+        location: name,
+        description: `Evidence extracted for ${cleanName(name)}.`
+      }
+    ],
+    confidence,
+    criticality,
+    upstream,
+    downstream,
+    failureImpact,
+    dollarExposure: {
+      low: 0,
+      base: 0,
+      high: 0,
+      assumptions: 'Dollar exposure requires business volume, unit value, labor recovery, SLA, customer, and compliance inputs.'
+    },
+    recommendedAction: {
+      mode: 'document',
+      summary: action,
+      owner: 'Source owner',
+      priority: criticality === 'high' ? 'P0' : 'P1',
+      acceptanceCriteria: 'Evidence, owner, confidence, upstream/downstream relationships, failure impact, and migration action are validated.'
+    },
+    status: 'inferred_from_extracted_evidence'
+  };
+}
+
+function relationship(id, fromId, toId, type, evidenceId, confidence) {
+  return {
+    id,
+    fromId,
+    toId,
+    type,
+    automated: null,
+    cadence: null,
+    transformId: null,
+    evidenceId,
+    confidence,
+    status: 'inferred_from_extracted_evidence'
+  };
+}
+
+function reportSection(title, body, confidence, evidenceIds) {
+  return { title, body, confidence, evidenceIds };
+}
+
+function firstSourceName(text) {
+  return text.match(/name:\s*([^\n\r]+)/i)?.[1]?.trim() || text.match(/--- SOURCE \d+:\s*([^\n\r-]+)/i)?.[1]?.trim() || '';
+}
+
+function inferSourceKindFromEvidence(text, sourceName) {
+  const combined = `${sourceName}\n${text}`.toLowerCase();
+  if (/\.(xlsx|xlsm|xls)\b|workbook sheets|xl\/worksheets/.test(combined)) return 'excel';
+  if (/\.(accdb|mdb)\b|access binary|string recovery/.test(combined)) return 'access';
+  if (/\.(docx|doc)\b|word\/document\.xml|document text/.test(combined)) return 'word';
+  if (/\.(sql|csv|tsv)\b/.test(combined)) return 'database';
+  return 'mixed';
+}
+
+function sourceKindLabel(kind) {
+  const labels = {
+    excel: 'Excel workbook',
+    access: 'Access database',
+    word: 'process document',
+    database: 'database extract',
+    mixed: 'multi-source'
+  };
+  return labels[kind] || `${kind || 'source'} artifact`;
+}
+
+function deriveCriticalOutputs(payload, sourceName, sheetNames, recoveredTerms) {
+  const targets = safeArray(payload.targetOutputs).filter(Boolean).map((value) => String(value));
+  if (targets.length) {
+    return targets.slice(0, 12);
+  }
+  const outputTerms = [...sheetNames, ...recoveredTerms]
+    .filter((value) => /report|output|dashboard|summary|calendar|plan|scorecard|invoice|claim|schedule|forecast/i.test(value))
+    .slice(0, 8);
+  return outputTerms.length ? outputTerms : [`${sourceName} business output`];
+}
+
+function extractListAfter(text, regex, limit) {
+  const match = text.match(regex);
+  if (!match) {
+    return [];
+  }
+  return match[1]
+    .split(/\s*,\s*/)
+    .map(cleanName)
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
+function uniqueMatches(text, regex, limit) {
+  const values = [];
+  const seen = new Set();
+  for (const match of text.matchAll(regex)) {
+    const value = cleanName(match[1]);
+    const key = value.toLowerCase();
+    if (value && !seen.has(key)) {
+      seen.add(key);
+      values.push(value);
+    }
+    if (values.length >= limit) {
+      break;
+    }
+  }
+  return values;
+}
+
+function recoveredEvidenceTerms(text, limit) {
+  const candidates = text
+    .split(/\r?\n/)
+    .map(cleanName)
+    .filter((line) => line.length >= 3 && line.length <= 80)
+    .filter((line) => !/^(name|extension|size|status|formulas|none detected|recovered strings)$/i.test(line))
+    .filter((line) => /[A-Za-z]/.test(line));
+  return mergePrimitiveArrays([candidates]).slice(0, limit);
+}
+
+function metadataType(path) {
+  if (/connection|external/i.test(path)) return 'connection';
+  if (/query/i.test(path)) return 'query';
+  if (/pivot/i.test(path)) return 'pivot';
+  if (/customXml/i.test(path)) return 'custom_xml';
+  return 'workbook_metadata';
+}
+
+function cleanName(value) {
+  return String(value || '')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/_x([0-9A-F]{4})_/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120);
 }
 
 function mergeReportSections(deltas) {
@@ -976,6 +1364,28 @@ function chooseBestText(deltas, key) {
     return '';
   }
   return [...candidates].sort((a, b) => b.length - a.length)[0];
+}
+
+function chooseSourceAwareText(deltas, key, canonicalValue, sourceValue, fallback) {
+  const best = chooseBestText(deltas, key) || stringValue(canonicalValue);
+  if (!best || isInternalDiscoveryText(best)) {
+    return sourceValue || fallback || '';
+  }
+  return best;
+}
+
+function stringValue(value) {
+  return String(value || '').trim();
+}
+
+function isInternalDiscoveryRecord(record) {
+  const id = stringValue(record.id || record.item_id || record.node_id).toLowerCase();
+  const name = stringValue(record.name || record.object_name || record.title).toLowerCase();
+  return /^(graph|graph-001|pack|pack-001)$/i.test(id) || isInternalDiscoveryText(name);
+}
+
+function isInternalDiscoveryText(value) {
+  return /distillery discovery run|proof-grade discovery graph|canonical discovery graph|canonical proof graph|discovery action pack|mash bill source set|raw source set|evidence extraction|auto documentation|diagram pack|engineering backlog/i.test(stringValue(value));
 }
 
 function chooseBetterBody(left, right) {

@@ -422,9 +422,11 @@ export class App {
 
   readonly generatedCounts = computed(() => {
     const result = this.synthesisResult();
+    const fallbackItems = this.sourceFallbackItems();
+    const fallbackRelationships = this.sourceFallbackRelationships(fallbackItems);
     return {
-      items: result?.counts?.items ?? result?.canonicalDelta?.items?.length ?? this.model.items.length,
-      relationships: result?.counts?.relationships ?? result?.canonicalDelta?.relationships?.length ?? this.model.relationships.length,
+      items: result?.counts?.items || result?.canonicalDelta?.items?.length || fallbackItems.length,
+      relationships: result?.counts?.relationships || result?.canonicalDelta?.relationships?.length || fallbackRelationships.length,
       artifacts: result?.counts?.artifacts ?? result?.canonicalDelta?.artifacts?.length ?? this.model.artifacts.length,
       backlog: result?.counts?.backlog ?? result?.canonicalDelta?.backlog?.length ?? this.model.backlog.length
     };
@@ -433,8 +435,8 @@ export class App {
   readonly reportPreviewNodes = computed<InlineGraphNode[]>(() => {
     const delta = this.synthesisResult()?.canonicalDelta;
     const items = delta?.items?.length
-      ? this.records(delta.items)
-      : this.model.items.map((item) => ({ ...item }) as unknown as Record<string, unknown>);
+      ? this.usableItemRecords(delta.items)
+      : this.sourceFallbackItems();
     const limited = items.slice(0, 10);
     const columns = limited.length <= 6 ? 3 : 4;
     const xStep = 100 / columns;
@@ -463,7 +465,7 @@ export class App {
     const delta = this.synthesisResult()?.canonicalDelta;
     const relationships = delta?.relationships?.length
       ? this.records(delta.relationships)
-      : this.model.relationships.map((relationship) => ({ ...relationship }) as unknown as Record<string, unknown>);
+      : this.sourceFallbackRelationships(this.sourceFallbackItems());
     const explicitEdges = relationships
       .map((relationship, index) => {
         const from = this.readString(relationship, ['fromId', 'from_id', 'from']);
@@ -1214,8 +1216,10 @@ export class App {
   }
 
   private sectionsFromCanonicalDelta(delta: NonNullable<SynthesisResponse['canonicalDelta']>) {
-    const items = this.records(delta.items);
-    const relationships = this.records(delta.relationships);
+    const items = this.usableItemRecords(delta.items);
+    const relationships = this.records(delta.relationships).length
+      ? this.records(delta.relationships)
+      : this.sourceFallbackRelationships(items);
     const artifacts = this.records(delta.artifacts);
     const backlog = this.records(delta.backlog);
     const evidenceIndex = this.records((delta as Record<string, unknown>)['evidenceIndex']);
@@ -1334,8 +1338,10 @@ export class App {
     }
 
     const deltaRecord = delta as Record<string, unknown>;
-    const items = this.records(delta.items);
-    const relationships = this.records(delta.relationships);
+    const items = this.usableItemRecords(delta.items);
+    const relationships = this.records(delta.relationships).length
+      ? this.records(delta.relationships)
+      : this.sourceFallbackRelationships(items);
     const artifacts = this.records(delta.artifacts);
     const backlog = this.records(delta.backlog);
     const evidenceIndex = this.records(deltaRecord['evidenceIndex']);
@@ -1669,8 +1675,8 @@ export class App {
   private diagramSpecs(): DiagramSpec[] {
     return [
       { id: 'D01', fileBase: 'D01_Executive_Value_Stream', title: 'D01 Executive Value Stream', subtitle: 'Source evidence to migration action, with business value and decision points.', kind: 'valueStream' },
-      { id: 'D02', fileBase: 'D02_System_Context_Diagram', title: 'D02 System Context Diagram', subtitle: 'Systems, files, people, and outputs surrounding the canonical discovery graph.', kind: 'context' },
-      { id: 'D03', fileBase: 'D03_Business_Process_Swimlane', title: 'D03 Business Process Swimlane', subtitle: 'End-to-end operating model by role, source, Distillery step, and engineering handoff.', kind: 'swimlane' },
+      { id: 'D02', fileBase: 'D02_System_Context_Diagram', title: 'D02 System Context Diagram', subtitle: 'Systems, files, people, logic, and outputs surrounding the uploaded source.', kind: 'context' },
+      { id: 'D03', fileBase: 'D03_Business_Process_Swimlane', title: 'D03 Business Process Swimlane', subtitle: 'End-to-end operating model by business role, source artifact, logic, controls, output, and engineering handoff.', kind: 'swimlane' },
       { id: 'D04', fileBase: 'D04_Detailed_Data_Flow', title: 'D04 Detailed Data Flow', subtitle: 'Data movements, transformations, storage points, and downstream outputs.', kind: 'dataFlow' },
       { id: 'D05', fileBase: 'D05_Recursive_Lineage_Graph', title: 'D05 Recursive Lineage Graph', subtitle: 'Upstream chain from critical outputs to source candidates and documented blockers.', kind: 'lineage' },
       { id: 'D06', fileBase: 'D06_Object_Dependency_Map', title: 'D06 Object Dependency Map', subtitle: 'Object-level dependency map for sources, queries, logic, reports, and outputs.', kind: 'dependency' },
@@ -1694,38 +1700,50 @@ export class App {
       : this.model.backlog.map((action) => ({ ...action }) as unknown as Record<string, unknown>);
 
     if (spec.kind === 'valueStream') {
-      const nodes = [
-        this.diagramNode('SRC', 'Raw source set', sourceName, 'source', 70, 286, 150, 96, 'source', 85),
-        this.diagramNode('EXT', 'Evidence extraction', 'files, docs, SQL, workbook XML', 'process', 270, 286, 166, 96, 'process', 82),
-        this.diagramNode('GRAPH', 'Canonical proof graph', 'nodes, edges, evidence, confidence', 'graph', 488, 260, 188, 122, 'graph', 88),
-        this.diagramNode('DOCS', 'Auto documentation', 'current-state inventory and narrative', 'output', 730, 205, 174, 96, 'output', 84),
-        this.diagramNode('DIAGS', 'Diagram pack', 'value, context, flow, lineage, impact', 'output', 730, 370, 174, 96, 'output', 84),
-        this.diagramNode('ACTIONS', 'Engineering backlog', 'Fivetran, dbt, SQL, Snowpark work', 'action', 965, 286, 170, 96, 'action', 82)
-      ];
+      const sourceNodes = objects.filter((node) => /source|file|workbook|database|document|sheet/i.test(node.type)).slice(0, 2);
+      const logicNodes = objects.filter((node) => /formula|query|macro|transform|rule|metadata|connection|pivot/i.test(node.type)).slice(0, 3);
+      const outputNodes = objects.filter((node) => /output|report|dashboard|calendar|extract/i.test(node.type)).slice(0, 2);
+      const actionNode = this.diagramNode('ACTION', 'Migration action', this.readString(actions[0] || {}, ['title', 'summary']) || 'metadata export, lineage validation, rebuild plan', 'action', 950, 312, 180, 90, 'action', null);
+      const nodes = this.placeObjectNodes([...sourceNodes, ...logicNodes, ...outputNodes].length ? [...sourceNodes, ...logicNodes, ...outputNodes] : objects.slice(0, 7), 'dataFlow')
+        .map((node, index) => ({
+          ...node,
+          x: 70 + index * Math.max(120, Math.floor(820 / Math.max(1, Math.min(6, objects.length)))),
+          y: index % 2 === 0 ? 268 : 390,
+          w: 170,
+          h: 90
+        }))
+        .concat(actionNode);
+      const relatedEdges = relationships.filter((edge) => nodes.some((node) => node.id === edge.from) && nodes.some((node) => node.id === edge.to)).slice(0, 12);
+      const edges = relatedEdges.length
+        ? relatedEdges
+        : nodes.slice(0, -1).map((node, index) => this.diagramEdge(`VS-${index + 1}`, node.id, nodes[index + 1].id, index === nodes.length - 2 ? 'drives action' : 'feeds', index < 2 ? 'source' : 'process'));
       return {
         spec,
         width,
         height,
         nodes,
-        edges: [
-          this.diagramEdge('E1', 'SRC', 'EXT', 'extracts', 'source'),
-          this.diagramEdge('E2', 'EXT', 'GRAPH', 'normalizes', 'process'),
-          this.diagramEdge('E3', 'GRAPH', 'DOCS', 'documents', 'output'),
-          this.diagramEdge('E4', 'GRAPH', 'DIAGS', 'renders', 'output'),
-          this.diagramEdge('E5', 'DOCS', 'ACTIONS', 'drives', 'action'),
-          this.diagramEdge('E6', 'DIAGS', 'ACTIONS', 'prioritizes', 'action')
-        ],
+        edges,
         lanes: [],
         callouts: [
-          this.diagramCallout('Done standard', 'Every node maps back to evidence, confidence, owner, impact, and next action.', 450, 560, 300, 96, 'graph'),
+          this.diagramCallout('Discovery standard', 'Every source node must map back to evidence, confidence, owner, impact, and next action.', 450, 560, 300, 96, 'graph'),
           this.diagramCallout('Business exposure', this.exposureSummary(context.delta.estimatedDollarExposure) || 'Exposure model generated from process failure, lateness, wrong data, partial run, and auditability scenarios.', 805, 560, 320, 96, 'risk')
         ]
       };
     }
 
     if (spec.kind === 'context') {
-      const center = this.diagramNode('GRAPH', 'Canonical discovery graph', 'single model driving all artifacts', 'graph', 494, 302, 212, 118, 'graph', 90);
-      const around = objects.slice(0, 10).map((node, index) => {
+      const center = {
+        ...objects[0],
+        id: objects[0]?.id || 'SOURCE',
+        label: objects[0]?.label || sourceName,
+        sublabel: objects[0]?.sublabel || this.importSourceKind(),
+        x: 494,
+        y: 302,
+        w: 212,
+        h: 118,
+        tone: 'source' as DiagramTone
+      };
+      const around = objects.slice(1, 11).map((node, index) => {
         const angle = (-120 + index * (240 / Math.max(objects.slice(0, 10).length - 1, 1))) * Math.PI / 180;
         const radiusX = 405;
         const radiusY = 242;
@@ -1743,11 +1761,11 @@ export class App {
         width,
         height,
         nodes: [center, ...around],
-        edges: around.map((node, index) => this.diagramEdge(`CTX-${index}`, node.id, 'GRAPH', node.type || 'feeds', node.tone)),
+        edges: around.map((node, index) => this.diagramEdge(`CTX-${index}`, center.id, node.id, node.type || 'contains', node.tone)),
         lanes: [],
         callouts: [
           this.diagramCallout('Scope', `${objects.length} discovered objects and ${relationships.length} discovered relationships in the current run.`, 60, 595, 265, 78, 'neutral'),
-          this.diagramCallout('Outputs', `${this.liveArtifacts().length} action-pack artifacts generated from the graph.`, 875, 595, 265, 78, 'output')
+          this.diagramCallout('Outputs', `${this.listText(context.deltaRecord['criticalOutputs'], this.targetOutputs().join(', ')) || 'Output candidates require owner confirmation.'}`, 875, 595, 265, 78, 'output')
         ]
       };
     }
@@ -1756,16 +1774,16 @@ export class App {
       const lanes = [
         this.diagramLane('Business / Operations', 58, 150, 1084, 116),
         this.diagramLane('Source Systems & Files', 58, 276, 1084, 116),
-        this.diagramLane("Uncle Kev's Distillery", 58, 402, 1084, 116),
+        this.diagramLane('Logic / Controls', 58, 402, 1084, 116),
         this.diagramLane('Engineering Delivery', 58, 528, 1084, 116)
       ];
       const nodes = [
-        this.diagramNode('TRIGGER', 'Trigger / SLA window', 'business asks for a trusted output', 'process', 110, 178, 150, 68, 'process', null),
-        this.diagramNode('SELECT', 'Select sources', 'files, DBs, workbooks, docs', 'source', 310, 304, 150, 68, 'source', null),
-        this.diagramNode('RUN', 'Run Distillery', 'extract, infer, score, synthesize', 'graph', 510, 430, 160, 68, 'graph', null),
-        this.diagramNode('REVIEW', 'Review blockers', 'evidence gaps and confidence', 'control', 710, 430, 160, 68, 'control', null),
-        this.diagramNode('PACK', 'Action pack', 'reports, diagrams, workbook, backlog', 'output', 910, 430, 160, 68, 'output', null),
-        this.diagramNode('BUILD', 'Modernize', 'ingest, model, test, govern', 'action', 910, 556, 160, 68, 'action', null)
+        this.diagramNode('TRIGGER', 'Trigger / SLA window', this.listText(context.deltaRecord['criticalOutputs'], 'business output requested'), 'process', 110, 178, 170, 68, 'process', null),
+        this.diagramNode('SOURCE', sourceName, this.importSourceKind(), 'source', 320, 304, 170, 68, 'source', null),
+        this.diagramNode('LOGIC', this.firstNodeLabel(objects, /formula|query|macro|logic|transform|metadata/i, 'Workbook logic'), 'formulas, refresh, rules', 'graph', 540, 430, 170, 68, 'graph', null),
+        this.diagramNode('CONTROL', this.firstNodeLabel(objects, /control|exception|validation|risk/i, 'Control / exception'), 'evidence and owner pending', 'control', 750, 430, 170, 68, 'control', null),
+        this.diagramNode('OUTPUT', this.firstNodeLabel(objects, /output|report|dashboard|calendar/i, 'Business output'), 'consumer and SLA pending', 'output', 950, 304, 170, 68, 'output', null),
+        this.diagramNode('BUILD', 'Modernize', 'Fivetran, dbt, SQL, Snowpark', 'action', 950, 556, 170, 68, 'action', null)
       ];
       return {
         spec,
@@ -1773,11 +1791,11 @@ export class App {
         height,
         nodes,
         edges: [
-          this.diagramEdge('S1', 'TRIGGER', 'SELECT', 'request', 'process'),
-          this.diagramEdge('S2', 'SELECT', 'RUN', 'stage', 'source'),
-          this.diagramEdge('S3', 'RUN', 'REVIEW', 'findings', 'graph'),
-          this.diagramEdge('S4', 'REVIEW', 'PACK', 'approve', 'control'),
-          this.diagramEdge('S5', 'PACK', 'BUILD', 'deliver', 'action')
+          this.diagramEdge('S1', 'TRIGGER', 'SOURCE', 'request / refresh', 'process'),
+          this.diagramEdge('S2', 'SOURCE', 'LOGIC', 'feeds / calculates', 'source'),
+          this.diagramEdge('S3', 'LOGIC', 'CONTROL', 'validated by', 'graph'),
+          this.diagramEdge('S4', 'CONTROL', 'OUTPUT', 'approves / flags', 'control'),
+          this.diagramEdge('S5', 'OUTPUT', 'BUILD', 'modernize', 'action')
         ],
         lanes,
         callouts: []
@@ -1870,12 +1888,12 @@ export class App {
 
     if (spec.kind === 'timeline') {
       const steps = [
-        ['T1', 'Source selected', 'intake'],
-        ['T2', 'Readable evidence extracted', 'local parse'],
-        ['T3', 'Distillery run', 'synthesis'],
-        ['T4', 'Graph saved', 'canonical model'],
-        ['T5', 'Artifacts generated', 'action pack'],
-        ['T6', 'Engineering actioned', 'delivery']
+        ['T1', 'Source refresh', sourceName],
+        ['T2', 'Workbook logic', this.firstNodeLabel(objects, /formula|query|macro|pivot|connection/i, 'formulas / metadata')],
+        ['T3', 'Validation point', this.firstNodeLabel(objects, /control|exception|validation/i, 'control pending')],
+        ['T4', 'Business output', this.firstNodeLabel(objects, /output|report|dashboard|calendar/i, 'output candidate')],
+        ['T5', 'Owner review', 'signoff and SLA'],
+        ['T6', 'Migration work', 'ingest, model, test, govern']
       ];
       const nodes = steps.map(([id, label, sublabel], index) => this.diagramNode(id, label, sublabel, 'timeline', 90 + index * 180, 336 + (index % 2 === 0 ? -88 : 88), 142, 66, index < 2 ? 'source' : index < 4 ? 'graph' : 'action', null));
       return {
@@ -1913,11 +1931,7 @@ export class App {
   }
 
   private diagramObjectNodes(context: PackageContext): DiagramNode[] {
-    const records = context.items.length ? context.items : [
-      { id: 'SRC-001', name: this.importSourceName(), type: this.importSourceKind(), confidence: 70 },
-      { id: 'GRAPH-001', name: 'Canonical discovery graph', type: 'graph', confidence: 80 },
-      { id: 'PACK-001', name: 'Discovery Action Pack', type: 'output', confidence: 80 }
-    ];
+    const records = context.items.length ? context.items : this.sourceFallbackItems();
 
     return records.slice(0, 12).map((item, index) => {
       const type = this.readString(item, ['type', 'node_type']) || 'object';
@@ -1954,6 +1968,182 @@ export class App {
         );
       })
       .filter((edge): edge is DiagramEdge => Boolean(edge));
+  }
+
+  private usableItemRecords(value: unknown): Record<string, unknown>[] {
+    const records = this.records(value).filter((item) => !this.isInternalDiscoveryRecord(item));
+    return records.length ? records : this.sourceFallbackItems();
+  }
+
+  private isInternalDiscoveryRecord(item: Record<string, unknown>): boolean {
+    const id = this.readString(item, ['id', 'item_id', 'node_id']).toLowerCase();
+    const name = this.readString(item, ['name', 'object_name', 'title']).toLowerCase();
+    return /^(graph|graph-001|pack|pack-001)$/.test(id)
+      || /distillery discovery run|proof-grade discovery graph|canonical discovery graph|canonical proof graph|discovery action pack|mash bill source set|raw source set|evidence extraction|auto documentation|diagram pack|engineering backlog/i.test(name);
+  }
+
+  private sourceFallbackItems(): Record<string, unknown>[] {
+    const sourceName = this.importSourceName() || this.stagedSources()[0]?.name || 'Uploaded source';
+    const sourceKind = this.importSourceKind();
+    const evidence = this.extractedText();
+    const sheetNames = this.extractWorkbookSheets(evidence);
+    const worksheetMatches = [...evidence.matchAll(/(xl\/worksheets\/[^:\s]+):\s*dimension\s*([^;]+);\s*formulas:\s*([^\n\r]+)/gi)]
+      .slice(0, 16)
+      .map((match, index) => ({
+        id: `WS-${String(index + 1).padStart(3, '0')}`,
+        path: match[1],
+        dimension: match[2],
+        formulas: match[3]
+      }));
+    const metadataPaths = this.uniqueRegexMatches(evidence, /\b(xl\/(?:connections|queryTables|queries|pivotTables|pivotCache|externalLinks|customXml)\/[^\s:]+)\b/gi, 10);
+    const formulaSheets = worksheetMatches.filter((sheet) => !/^none detected$/i.test(sheet.formulas.trim())).slice(0, 8);
+    const outputs = this.targetOutputs().length
+      ? this.targetOutputs().slice(0, 5)
+      : [...sheetNames, sourceName].filter((name) => /calendar|report|output|dashboard|summary|plan|schedule/i.test(name)).slice(0, 5);
+
+    const items: Record<string, unknown>[] = [
+      this.sourceFallbackItem('SRC-001', sourceKind === 'excel' ? 'workbook' : sourceKind, sourceName, `${sourceName} uploaded source artifact`, 86, 'high', [], ['INV-001']),
+      this.sourceFallbackItem('INV-001', 'source_inventory', `${sourceName} extracted inventory`, `${sheetNames.length || worksheetMatches.length} sheets and ${formulaSheets.length} formula blocks detected`, 82, 'medium', ['SRC-001'], [])
+    ];
+
+    sheetNames.slice(0, 12).forEach((sheet, index) => {
+      items.push(this.sourceFallbackItem(
+        `SHEET-${String(index + 1).padStart(3, '0')}`,
+        'sheet',
+        sheet,
+        `Worksheet discovered in ${sourceName}`,
+        84,
+        index < 4 ? 'medium' : 'low',
+        ['SRC-001'],
+        formulaSheets[index] ? [`FORM-${String(index + 1).padStart(3, '0')}`] : ['OUT-001']
+      ));
+    });
+
+    metadataPaths.forEach((path, index) => {
+      items.push(this.sourceFallbackItem(
+        `META-${String(index + 1).padStart(3, '0')}`,
+        this.metadataToneType(path),
+        path,
+        `Workbook metadata path discovered in ${sourceName}`,
+        76,
+        /connection|query|external/i.test(path) ? 'high' : 'medium',
+        ['SRC-001'],
+        ['INV-001']
+      ));
+    });
+
+    formulaSheets.forEach((sheet, index) => {
+      items.push(this.sourceFallbackItem(
+        `FORM-${String(index + 1).padStart(3, '0')}`,
+        'formula_block',
+        `${sheet.path.replace(/^.*\//, '').replace(/\.xml$/i, '')} formulas`,
+        `Formula logic detected in ${sheet.path} (${sheet.dimension})`,
+        78,
+        'high',
+        ['INV-001', `SHEET-${String(index + 1).padStart(3, '0')}`],
+        ['OUT-001']
+      ));
+    });
+
+    (outputs.length ? outputs : [`${sourceName} business output`]).forEach((output, index) => {
+      items.push(this.sourceFallbackItem(
+        `OUT-${String(index + 1).padStart(3, '0')}`,
+        'output',
+        output,
+        `Output candidate inferred from ${sourceName}`,
+        72,
+        'high',
+        formulaSheets.length ? formulaSheets.map((_, formulaIndex) => `FORM-${String(formulaIndex + 1).padStart(3, '0')}`) : ['INV-001'],
+        []
+      ));
+    });
+
+    return items;
+  }
+
+  private sourceFallbackItem(id: string, type: string, name: string, purpose: string, confidence: number, criticality: string, upstream: string[], downstream: string[]): Record<string, unknown> {
+    return {
+      id,
+      type,
+      name,
+      businessPurpose: purpose,
+      owner: 'Source owner',
+      evidence: [{ id: 'EV-SOURCE-INTAKE', type: 'source_extraction', location: this.importSourceName(), description: 'Evidence extracted from the uploaded source.' }],
+      confidence,
+      criticality,
+      upstream,
+      downstream,
+      failureImpact: 'If this node is misclassified, migration lineage and acceptance testing can miss workbook dependencies.',
+      dollarExposure: { low: 0, base: 0, high: 0, assumptions: 'Dollar exposure requires business volume, unit value, labor, SLA, and compliance inputs.' },
+      recommendedAction: { mode: 'document', summary: 'Validate extracted source metadata with native workbook exports and owner review.', owner: 'Source owner', priority: criticality === 'high' ? 'P0' : 'P1', acceptanceCriteria: 'Node is evidence-backed with owner, confidence, upstream, downstream, failure impact, and migration action.' },
+      status: 'inferred_from_uploaded_evidence'
+    };
+  }
+
+  private sourceFallbackRelationships(items: Record<string, unknown>[]): Record<string, unknown>[] {
+    const ids = new Set(items.map((item) => this.readString(item, ['id'])));
+    const relationships: Record<string, unknown>[] = [];
+    const add = (id: string, fromId: string, toId: string, type: string, confidence: number): void => {
+      if (ids.has(fromId) && ids.has(toId)) {
+        relationships.push({ id, fromId, toId, type, evidenceId: 'EV-SOURCE-INTAKE', confidence, status: 'inferred_from_uploaded_evidence' });
+      }
+    };
+
+    add('REL-SRC-INV', 'SRC-001', 'INV-001', 'contains', 86);
+    items.filter((item) => this.readString(item, ['type']) === 'sheet').forEach((item, index) => add(`REL-SHEET-${index + 1}`, 'SRC-001', this.readString(item, ['id']), 'contains_sheet', 84));
+    items.filter((item) => /metadata|connection|query|pivot/i.test(this.readString(item, ['type']))).forEach((item, index) => add(`REL-META-${index + 1}`, this.readString(item, ['id']), 'INV-001', 'documents_metadata', 76));
+    items.filter((item) => this.readString(item, ['type']) === 'formula_block').forEach((item, index) => add(`REL-FORM-${index + 1}`, 'INV-001', this.readString(item, ['id']), 'extracts_formula_logic', 78));
+    const formulaIds = items.filter((item) => this.readString(item, ['type']) === 'formula_block').map((item) => this.readString(item, ['id']));
+    items.filter((item) => this.readString(item, ['type']) === 'output').forEach((item, outputIndex) => {
+      (formulaIds.length ? formulaIds : ['INV-001']).forEach((fromId, index) => add(`REL-OUT-${outputIndex + 1}-${index + 1}`, fromId, this.readString(item, ['id']), 'feeds_output', 72));
+    });
+    return relationships;
+  }
+
+  private extractWorkbookSheets(evidence: string): string[] {
+    const match = evidence.match(/Workbook sheets:\s*([^\n\r]+)/i);
+    if (!match) {
+      return [];
+    }
+    return match[1]
+      .split(/\s*,\s*/)
+      .map((name) => this.cleanDisplayText(name))
+      .filter(Boolean)
+      .slice(0, 24);
+  }
+
+  private uniqueRegexMatches(value: string, regex: RegExp, limit: number): string[] {
+    const seen = new Set<string>();
+    const results: string[] = [];
+    for (const match of value.matchAll(regex)) {
+      const text = this.cleanDisplayText(match[1] || '');
+      const key = text.toLowerCase();
+      if (text && !seen.has(key)) {
+        seen.add(key);
+        results.push(text);
+      }
+      if (results.length >= limit) {
+        break;
+      }
+    }
+    return results;
+  }
+
+  private metadataToneType(path: string): string {
+    if (/connection|external/i.test(path)) {
+      return 'connection';
+    }
+    if (/query/i.test(path)) {
+      return 'query';
+    }
+    if (/pivot/i.test(path)) {
+      return 'pivot';
+    }
+    return 'workbook_metadata';
+  }
+
+  private firstNodeLabel(nodes: DiagramNode[], pattern: RegExp, fallback: string): string {
+    return nodes.find((node) => pattern.test(`${node.type} ${node.label}`))?.label || fallback;
   }
 
   private placeObjectNodes(nodes: DiagramNode[], kind: DiagramKind): DiagramNode[] {

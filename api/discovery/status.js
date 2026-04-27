@@ -23,7 +23,7 @@ module.exports = async function handler(request, response) {
       return;
     }
 
-    const synthesis = await retrieveBackgroundSynthesis(responseIds || responseId);
+    const synthesis = await retrieveBackgroundSynthesis(responseIds || responseId, payload);
     if (synthesis.pending) {
       sendJson(response, 202, {
         ok: true,
