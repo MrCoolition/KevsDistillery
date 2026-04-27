@@ -2400,9 +2400,7 @@ export class App {
       : placed.slice(0, -1).map((node, index) => this.diagramEdge(`AUTO-${index}`, node.id, placed[index + 1].id, 'depends on', 'neutral'));
     const callouts = spec.kind === 'lineage'
       ? [this.diagramCallout('Terminal condition', 'Each branch stops only at a source of record, third party, manual entry, blocker, duplicate, obsolete source, or approved stopping point.', 690, 590, 420, 82, 'graph')]
-      : spec.kind === 'dependency'
-        ? [this.diagramCallout('Object rule', 'Every object node maps to evidence and every edge maps to a dependency, transform, read/write, approval, or blocker.', 690, 590, 420, 82, 'graph')]
-        : [this.diagramCallout('Flow rule', 'Every movement must declare source, target, transform, cadence, confidence, and downstream failure impact.', 690, 590, 420, 82, 'graph')];
+      : [this.diagramCallout('Flow rule', 'Every movement must declare source, target, transform, cadence, confidence, and downstream failure impact.', 690, 590, 420, 82, 'graph')];
 
     return {
       spec,
