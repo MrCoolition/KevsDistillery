@@ -653,13 +653,20 @@ async function retrieveBackgroundSynthesis(responseRef, requestPayload = {}) {
   }));
 
   if (retrieved.some((entry) => entry.synthesis.pending)) {
+    const finished = retrieved.filter((entry) => !entry.synthesis.pending && entry.synthesis.canonicalDelta);
+    const partial = finished.length
+      ? mergeSpecialistSyntheses(finished.map((entry) => entry.synthesis), requestPayload)
+      : null;
     return {
       pending: true,
       responseIds,
       responseStatus: summarizeStatuses(retrieved.map((entry) => entry.synthesis.responseStatus)),
       model,
       orchestration: 'specialist-pass',
-      passCount: retrieved.length
+      passCount: retrieved.length,
+      passProgress: summarizePassProgress(retrieved),
+      partialCanonicalDelta: partial?.canonicalDelta || null,
+      partialCounts: partial?.canonicalDelta ? canonicalCounts(partial.canonicalDelta) : null
     };
   }
 
@@ -716,6 +723,29 @@ function summarizeStatuses(statuses) {
     return 'in_progress';
   }
   return cleaned[0];
+}
+
+function summarizePassProgress(entries) {
+  const finished = entries.filter((entry) => !entry.synthesis.pending);
+  const running = entries.filter((entry) => entry.synthesis.pending);
+  return {
+    total: entries.length,
+    finished: finished.length,
+    running: running.length,
+    completed: entries.filter((entry) => entry.synthesis.responseStatus === 'completed').length,
+    incomplete: entries.filter((entry) => entry.synthesis.responseStatus === 'incomplete').length,
+    runningTitles: running.map((entry) => entry.pass.title),
+    finishedTitles: finished.map((entry) => entry.pass.title)
+  };
+}
+
+function canonicalCounts(delta = {}) {
+  return {
+    items: safeArray(delta.items).length,
+    relationships: safeArray(delta.relationships).length,
+    artifacts: safeArray(delta.artifacts).length,
+    backlog: safeArray(delta.backlog).length
+  };
 }
 
 function mergeSpecialistSyntheses(syntheses, requestPayload = {}) {

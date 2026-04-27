@@ -54,6 +54,22 @@ interface SynthesisResponse {
   model?: string;
   orchestration?: string | null;
   passCount?: number | null;
+  passProgress?: {
+    total?: number;
+    finished?: number;
+    running?: number;
+    completed?: number;
+    incomplete?: number;
+    runningTitles?: string[];
+    finishedTitles?: string[];
+  } | null;
+  partialCounts?: {
+    items: number;
+    relationships: number;
+    artifacts: number;
+    backlog: number;
+  } | null;
+  partialCanonicalDelta?: any;
   fallbackReason?: string | null;
   outputText?: string;
   canonicalDelta?: {
@@ -370,8 +386,12 @@ export class App {
   });
 
   readonly packageProgress = computed(() => {
-    if (this.synthesisResult()) {
+    const result = this.synthesisResult();
+    if (result && !result.queued) {
       return 100;
+    }
+    if (result?.queued && result.passProgress?.total) {
+      return Math.max(12, Math.round(((result.passProgress.finished || 0) / result.passProgress.total) * 100));
     }
     const total = this.model.artifacts.reduce((sum, artifact) => sum + artifact.progress, 0);
     return Math.round(total / this.model.artifacts.length);
@@ -405,14 +425,15 @@ export class App {
   readonly targetOutputs = computed(() => this.toLines(this.targetOutputsText()));
 
   readonly liveArtifacts = computed<LiveArtifact[]>(() => {
-    const generatedArtifacts = this.synthesisResult()?.canonicalDelta?.artifacts;
+    const result = this.synthesisResult();
+    const generatedArtifacts = result?.canonicalDelta?.artifacts;
     if (generatedArtifacts?.length) {
       return generatedArtifacts.map((artifact, index) => ({
         id: artifact.id || String(index + 1).padStart(2, '0'),
         name: artifact.name || 'Generated artifact',
         audience: artifact.audience || 'Distillery crew',
         purpose: artifact.purpose || artifact.type || 'Generated from canonical discovery model.',
-        progress: this.synthesisResult() ? 100 : artifact.status === 'final' ? 100 : 76,
+        progress: result && !result.queued ? 100 : artifact.status === 'final' ? 100 : 76,
         sourceModel: 'canonical graph' as const
       }));
     }
@@ -729,7 +750,7 @@ export class App {
     const passCount = Array.isArray(responseRef) ? responseRef.length : 1;
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       const passText = passCount > 1 ? `${passCount} specialist passes` : 'the analysis pass';
-      this.analysisStatus.set(`The Distillery is ${attempt === 1 ? 'starting' : 'still running'} ${passText} (${attempt}/${maxAttempts}).`);
+      this.analysisStatus.set(`The Distillery is ${attempt === 1 ? 'starting' : 'checking'} ${passText}.`);
       await this.delay(3000);
 
       const response = await fetch('/api/discovery/status', {
@@ -741,8 +762,18 @@ export class App {
       });
       const body = await this.readApiJson(response, 'Could not check synthesis status.');
       if (response.status === 202 || body.queued) {
-        const activePasses = body.passCount || passCount;
-        this.analysisStatus.set(`Distillery status: ${body.responseStatus || 'in progress'}. Uncle Kev is distilling ${activePasses} specialist passes.`);
+        this.applyPartialSynthesis(body);
+        const progress = body.passProgress;
+        if (progress?.total) {
+          const running = Array.isArray(progress.runningTitles) && progress.runningTitles.length
+            ? ` Still running: ${progress.runningTitles.slice(0, 2).join(', ')}${progress.runningTitles.length > 2 ? ', ...' : ''}.`
+            : '';
+          const live = body.partialCanonicalDelta ? ' Partial source model is live.' : '';
+          this.analysisStatus.set(`${progress.finished || 0}/${progress.total} specialist passes finished.${running}${live}`);
+        } else {
+          const activePasses = body.passCount || passCount;
+          this.analysisStatus.set(`The Distillery is running ${activePasses} specialist passes in parallel.`);
+        }
         continue;
       }
       if (!response.ok) {
@@ -756,6 +787,26 @@ export class App {
     }
 
     throw new Error('The Distillery is still running. Refresh status and try again in a minute.');
+  }
+
+  private applyPartialSynthesis(body: SynthesisResponse): void {
+    if (!body.partialCanonicalDelta) {
+      return;
+    }
+
+    this.synthesisResult.set({
+      ok: true,
+      queued: true,
+      responseId: body.responseId,
+      responseIds: body.responseIds,
+      responseStatus: body.responseStatus,
+      counts: body.partialCounts || null,
+      engine: body.engine,
+      orchestration: body.orchestration,
+      passCount: body.passCount,
+      passProgress: body.passProgress,
+      canonicalDelta: body.partialCanonicalDelta
+    });
   }
 
   private async completeSynthesis(responseRef: string | SynthesisResponseRef[], payload: Record<string, unknown>): Promise<SynthesisResponse> {

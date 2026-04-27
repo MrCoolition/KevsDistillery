@@ -33,6 +33,9 @@ module.exports = async function handler(request, response) {
         responseStatus: synthesis.responseStatus,
         orchestration: synthesis.orchestration || null,
         passCount: synthesis.passCount || null,
+        passProgress: synthesis.passProgress || null,
+        partialCounts: synthesis.partialCounts || null,
+        partialCanonicalDelta: synthesis.partialCanonicalDelta || null,
         engine: 'The Distillery',
         message: `The Distillery run is ${synthesis.responseStatus}.`
       });
