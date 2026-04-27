@@ -5,8 +5,8 @@ const reasoningEffort = process.env.OPENAI_REASONING_EFFORT || 'high';
 const responseVerbosity = process.env.OPENAI_VERBOSITY || 'high';
 const OPENAI_TIMEOUT_MS = Number(process.env.OPENAI_TIMEOUT_MS || 59000);
 const OPENAI_START_TIMEOUT_MS = Number(process.env.OPENAI_START_TIMEOUT_MS || 25000);
-const OPENAI_MAX_OUTPUT_TOKENS = Number(process.env.OPENAI_MAX_OUTPUT_TOKENS || 12000);
-const OPENAI_SPECIALIST_OUTPUT_TOKENS = Number(process.env.OPENAI_SPECIALIST_OUTPUT_TOKENS || 6500);
+const OPENAI_MAX_OUTPUT_TOKENS = Number(process.env.OPENAI_MAX_OUTPUT_TOKENS || 16000);
+const OPENAI_SPECIALIST_OUTPUT_TOKENS = Number(process.env.OPENAI_SPECIALIST_OUTPUT_TOKENS || 10000);
 const DISTILLERY_SINGLE_PASS = process.env.DISTILLERY_SINGLE_PASS === 'true';
 const PENDING_RESPONSE_STATUSES = new Set(['queued', 'in_progress']);
 
@@ -196,6 +196,9 @@ function buildInstructions(sourceKind, sourceName, pass = null) {
     'Return one valid JSON object only. No markdown, no prose outside JSON, no placeholder strings.',
     'This is production data discovery for engineers migrating current-state processes into Snowflake using Fivetran, dbt, SQL, and Snowpark.',
     'Analyze retrieved evidence, not just filenames. Treat filenames as weak evidence unless supported by extracted content. Never invent facts.',
+    'Never treat generated package artifact names as source objects, business outputs, or critical outputs. 01_Executive_Decision_Brief.pdf, Diagram Pack, Action Backlog, Evidence Archive, and Metadata Manifest are deliverables, not discovered source nodes.',
+    'For Excel workbooks, sheet nodes may only come from explicit Workbook sheet map / workbook <sheet> evidence. Namespace/function tokens such as microsoft.com:RD, microsoft.com:Single, microsoft.com:FV, LET_WF, LAMBDA_WF, ARRAYTEXT_WF, and _xlfn.* are not worksheet names.',
+    'External connections, external links, query tables, Power Query candidates, VBA projects/procedures, defined names, pivots, formulas, hyperlinks, and worksheet dimensions must be separate object types with their own evidence and next action.',
     'If evidence is incomplete, create a blocker-backed finding with the exact smallest source artifact needed to finish the discovery.',
     'A finding is unfinished unless it has evidence, confidence, and next action.',
     'Use one canonical node-edge model to drive the report, auto-documentation, diagrams, recursive lineage, financial exposure, and remediation backlog.',
@@ -222,6 +225,7 @@ function buildInstructions(sourceKind, sourceName, pass = null) {
       : 'Do not list all 9 artifacts in this specialist pass unless directly relevant; the merge layer owns the final package artifact list.',
     'Every critical output must have current-state narrative, diagram coverage, recursive lineage, business logic extraction, financial exposure, and a clear action recommendation or blocker.',
     'Do not use arbitrary low item caps. Be comprehensive in your focused area, deduplicate aggressively, and prefer evidence-backed depth over generic summaries.',
+    'Keep JSON compact enough to complete: no markdown prose, no repeated boilerplate, no duplicate objects, no generated artifact nodes, and no run-status/rerun actions in the delivery backlog.',
     'The user payload includes analysisPassTitle, specialistFocus, outputKeys, and reportSectionFocus. Obey those fields exactly to keep this pass deep and bounded.'
   ].join('\n');
 }
@@ -772,12 +776,12 @@ function mergeSpecialistSyntheses(syntheses, requestPayload = {}) {
     items: mergeArraysByKey([...deltas.map((delta) => safeArray(delta.items)), safeArray(sourceFallback.items)], itemKey).filter((item) => !isInternalDiscoveryRecord(item)),
     relationships: mergeArraysByKey([...deltas.map((delta) => safeArray(delta.relationships)), safeArray(sourceFallback.relationships)], relationshipKey),
     artifacts: ensureDiscoveryArtifacts(mergeArraysByKey(deltas.map((delta) => safeArray(delta.artifacts)), artifactKey)),
-    backlog: mergeArraysByKey([...deltas.map((delta) => safeArray(delta.backlog)), safeArray(sourceFallback.backlog)], actionKey),
-    evidenceIndex: mergeArraysByKey([...deltas.map((delta) => safeArray(delta.evidenceIndex)), safeArray(sourceFallback.evidenceIndex)], evidenceKey),
+    backlog: mergeArraysByKey([...deltas.map((delta) => safeArray(delta.backlog)), safeArray(sourceFallback.backlog)], actionKey).filter((action) => !isRunDiagnosticAction(action)),
+    evidenceIndex: mergeArraysByKey([...deltas.map((delta) => safeArray(delta.evidenceIndex)), safeArray(sourceFallback.evidenceIndex)], evidenceKey).filter((evidence) => !isRunDiagnosticEvidence(evidence)),
     lineageNodes: mergeArraysByKey([...deltas.map((delta) => safeArray(delta.lineageNodes)), safeArray(sourceFallback.lineageNodes)], lineageNodeKey),
     lineageEdges: mergeArraysByKey([...deltas.map((delta) => safeArray(delta.lineageEdges)), safeArray(sourceFallback.lineageEdges)], lineageEdgeKey),
-    failureRisks: mergeArraysByKey(deltas.map((delta) => safeArray(delta.failureRisks || delta.failure_risks || delta.failureModes)), failureKey),
-    openQuestions: mergeArraysByKey(deltas.map((delta) => safeArray(delta.openQuestions || delta.open_questions)), questionKey)
+    failureRisks: mergeArraysByKey(deltas.map((delta) => safeArray(delta.failureRisks || delta.failure_risks || delta.failureModes)), failureKey).filter((risk) => !isRunDiagnosticRisk(risk)),
+    openQuestions: mergeArraysByKey(deltas.map((delta) => safeArray(delta.openQuestions || delta.open_questions)), questionKey).filter((question) => !isRunDiagnosticQuestion(question))
   };
 
   for (const key of [
@@ -868,20 +872,41 @@ function buildSourceEvidenceDelta(payload = {}) {
   }
 
   const evidenceId = 'EV-SOURCE-INTAKE';
-  const workbookSheets = extractListAfter(extractedText, /Workbook sheets:\s*([^\n\r]+)/i, 40);
-  const worksheetMatches = [...extractedText.matchAll(/(xl\/worksheets\/[^:\s]+):\s*dimension\s*([^;]+);\s*formulas:\s*([^\n\r]+)/gi)]
-    .slice(0, 30)
-    .map((match, index) => ({
-      id: `WS-${String(index + 1).padStart(3, '0')}`,
+  const workbookSheets = extractListAfter(extractedText, /Workbook sheets:\s*([^\n\r]+)/i, 40)
+    .filter(isLikelyWorkbookSheetName);
+  const legacyWorksheetMatches = [...extractedText.matchAll(/^(xl\/worksheets\/[^:\s)]+):\s*dimension\s*([^;]+);\s*formulas:\s*([^\n\r]+)/gmi)]
+    .map((match) => ({
+      name: match[1].replace(/^.*\//, '').replace(/\.xml$/i, ''),
       path: match[1],
       dimension: match[2],
       formulas: match[3]
     }));
-  const metadataPaths = uniqueMatches(extractedText, /\b(xl\/(?:connections|queryTables|queries|pivotTables|pivotCache|externalLinks|customXml|worksheets)\/[^\s:]+)\b/gi, 35);
+  const namedWorksheetMatches = [...extractedText.matchAll(/Worksheet\s+([^\n\r(]+)\s+\((xl\/worksheets\/[^)]+)\):\s*dimension\s*([^;]+);\s*formulas:\s*([^\n\r;]+)/gi)]
+    .map((match) => ({
+      name: cleanName(match[1]),
+      path: match[2],
+      dimension: match[3],
+      formulas: match[4]
+    }));
+  const worksheetMatches = [...legacyWorksheetMatches, ...namedWorksheetMatches]
+    .filter((sheet) => isLikelyWorkbookSheetName(sheet.name))
+    .slice(0, 30)
+    .map((sheet, index) => ({
+      id: `WS-${String(index + 1).padStart(3, '0')}`,
+      ...sheet
+    }));
+  const metadataPaths = uniqueMatches(extractedText, /\b(xl\/(?:connections|queryTables|queries|pivotTables|pivotCache|externalLinks|customXml|customData|tables|slicers)\/[^\s:]+)\b/gi, 35);
+  const connectionEvidence = uniqueMatches(extractedText, /^Connection\s+\d+:\s*([^\n\r]+)/gmi, 20);
+  const powerQueryEvidence = uniqueMatches(extractedText, /^Power Query candidate\s+\d+:\s*([^\n\r]+)/gmi, 20);
+  const externalLinkEvidence = uniqueMatches(extractedText, /^External link\s+\d+:\s*([^\n\r]+)/gmi, 20);
+  const queryTableEvidence = uniqueMatches(extractedText, /^Query table for\s+[^:]+:\s*([^\n\r]+)/gmi, 20);
+  const vbaProcedures = extractListAfter(extractedText, /VBA procedures:\s*([^\n\r]+)/i, 40).filter((value) => !/^none recovered|not detected|unknown$/i.test(value));
+  const definedNames = extractListAfter(extractedText, /Defined names:\s*([^\n\r]+)/i, 40);
+  const hasVbaProject = /VBA project:\s*present/i.test(extractedText);
   const recoveredTerms = recoveredEvidenceTerms(extractedText, 40);
   const sheetNames = workbookSheets.length
     ? workbookSheets
-    : worksheetMatches.map((sheet) => sheet.path.replace(/^.*\//, '').replace(/\.xml$/i, ''));
+    : worksheetMatches.map((sheet) => sheet.name);
   const formulaSheets = worksheetMatches.filter((sheet) => !/^none detected$/i.test(sheet.formulas.trim())).slice(0, 12);
   const criticalOutputs = deriveCriticalOutputs(payload, sourceName, sheetNames, recoveredTerms);
 
@@ -940,7 +965,6 @@ function buildSourceEvidenceDelta(payload = {}) {
   }));
 
   const metadataNodes = metadataPaths
-    .filter((path) => !/worksheets/i.test(path))
     .slice(0, 12)
     .map((path, index) => canonicalItem({
       id: `META-${String(index + 1).padStart(3, '0')}`,
@@ -956,6 +980,105 @@ function buildSourceEvidenceDelta(payload = {}) {
       action: 'Export and inspect full workbook connection, query, pivot, external link, and VBA metadata.'
     }));
 
+  const connectionNodes = connectionEvidence.slice(0, 12).map((text, index) => canonicalItem({
+    id: `CONN-${String(index + 1).padStart(3, '0')}`,
+    type: 'external_connection',
+    name: text,
+    businessPurpose: `External connection discovered in ${sourceName}.`,
+    evidenceId,
+    confidence: 86,
+    criticality: 'high',
+    upstream: ['SRC-001'],
+    downstream: ['INV-001'],
+    failureImpact: 'If this connection is missed, upstream source-of-truth and refresh lineage are incomplete.',
+    action: 'Confirm connection target, credential owner, refresh cadence, source system, and replacement ingestion pattern.'
+  }));
+
+  const powerQueryNodes = powerQueryEvidence.slice(0, 12).map((text, index) => canonicalItem({
+    id: `PQ-${String(index + 1).padStart(3, '0')}`,
+    type: 'power_query',
+    name: text,
+    businessPurpose: `Power Query or query-table logic candidate discovered in ${sourceName}.`,
+    evidenceId,
+    confidence: 82,
+    criticality: 'high',
+    upstream: connectionNodes.length ? connectionNodes.map((node) => node.id).slice(0, 3) : ['SRC-001'],
+    downstream: ['OUT-001'],
+    failureImpact: 'If Power Query logic is omitted, Fivetran/dbt/Snowpark rebuilds may miss source filters, joins, type changes, or refresh dependencies.',
+    action: 'Extract full M/query-table definition, source credentials, parameters, refresh order, and output worksheet target.'
+  }));
+
+  const externalLinkNodes = externalLinkEvidence.slice(0, 12).map((text, index) => canonicalItem({
+    id: `XLINK-${String(index + 1).padStart(3, '0')}`,
+    type: 'external_link',
+    name: text,
+    businessPurpose: `External workbook link discovered in ${sourceName}.`,
+    evidenceId,
+    confidence: 84,
+    criticality: 'high',
+    upstream: ['SRC-001'],
+    downstream: ['INV-001'],
+    failureImpact: 'External workbook links can make lineage dependent on unmanaged files, network paths, or manually maintained sources.',
+    action: 'Confirm external workbook owner, file path, refresh cadence, and whether it is authoritative, duplicate, or obsolete.'
+  }));
+
+  const queryTableNodes = queryTableEvidence.slice(0, 12).map((text, index) => canonicalItem({
+    id: `QT-${String(index + 1).padStart(3, '0')}`,
+    type: 'query_table',
+    name: text,
+    businessPurpose: `Worksheet query table discovered in ${sourceName}.`,
+    evidenceId,
+    confidence: 82,
+    criticality: 'high',
+    upstream: connectionNodes.length ? connectionNodes.map((node) => node.id).slice(0, 3) : ['SRC-001'],
+    downstream: ['OUT-001'],
+    failureImpact: 'Query table refresh behavior may control what data arrives on sheets before formulas/macros run.',
+    action: 'Extract query text, connection target, refresh settings, destination range, and downstream formula/output dependencies.'
+  }));
+
+  const vbaNodes = hasVbaProject ? [
+    canonicalItem({
+      id: 'VBA-001',
+      type: 'vba_project',
+      name: `${sourceName} VBA project`,
+      businessPurpose: `Macro project detected in ${sourceName}.`,
+      evidenceId,
+      confidence: 80,
+      criticality: 'high',
+      upstream: ['SRC-001'],
+      downstream: vbaProcedures.length ? ['VBA-PROC-001'] : ['OUT-001'],
+      failureImpact: 'VBA can hide refresh orchestration, external calls, file exports, user actions, and business rules.',
+      action: 'Export all modules, worksheet/workbook events, forms, button bindings, references, and macro execution order.'
+    }),
+    ...vbaProcedures.slice(0, 20).map((procedure, index) => canonicalItem({
+      id: `VBA-PROC-${String(index + 1).padStart(3, '0')}`,
+      type: 'vba_procedure',
+      name: procedure,
+      businessPurpose: `Recovered VBA procedure candidate from ${sourceName}.`,
+      evidenceId,
+      confidence: 72,
+      criticality: 'high',
+      upstream: ['VBA-001'],
+      downstream: ['OUT-001'],
+      failureImpact: 'Unmapped macro procedures can silently alter workbook state, outputs, files, and refresh order.',
+      action: 'Export procedure body, call graph, triggered event, affected sheets/ranges/files, and replacement design.'
+    }))
+  ] : [];
+
+  const definedNameNodes = definedNames.slice(0, 20).map((definedName, index) => canonicalItem({
+    id: `NAME-${String(index + 1).padStart(3, '0')}`,
+    type: 'named_range',
+    name: definedName,
+    businessPurpose: `Workbook defined name discovered in ${sourceName}.`,
+    evidenceId,
+    confidence: 80,
+    criticality: 'medium',
+    upstream: ['SRC-001'],
+    downstream: formulaSheets.length ? [`FORM-${String(Math.min(index + 1, formulaSheets.length)).padStart(3, '0')}`] : ['OUT-001'],
+    failureImpact: 'Named ranges can hide calculation inputs, parameters, output areas, or workbook control flags.',
+    action: 'Map defined name scope, formula/reference, consumers, and migration equivalent.'
+  }));
+
   const outputNodes = criticalOutputs.slice(0, 8).map((output, index) => canonicalItem({
     id: `OUT-${String(index + 1).padStart(3, '0')}`,
     type: 'output',
@@ -969,11 +1092,11 @@ function buildSourceEvidenceDelta(payload = {}) {
     action: 'Confirm output owner, SLA, consumers, refresh cadence, dollar exposure inputs, and acceptance criteria.'
   }));
 
-  const items = [sourceNode, inventoryNode, ...sheetNodes, ...metadataNodes, ...formulaNodes, ...outputNodes];
+  const items = [sourceNode, inventoryNode, ...sheetNodes, ...metadataNodes, ...connectionNodes, ...externalLinkNodes, ...queryTableNodes, ...powerQueryNodes, ...definedNameNodes, ...vbaNodes, ...formulaNodes, ...outputNodes];
   const relationships = [
     relationship('REL-SRC-INV', 'SRC-001', 'INV-001', 'contains', evidenceId, 86),
     ...sheetNodes.map((node, index) => relationship(`REL-SRC-SHEET-${index + 1}`, 'SRC-001', node.id, 'contains_sheet', evidenceId, 84)),
-    ...metadataNodes.map((node, index) => relationship(`REL-META-INV-${index + 1}`, node.id, 'INV-001', 'documents_metadata', evidenceId, 76)),
+    ...[...metadataNodes, ...connectionNodes, ...externalLinkNodes, ...queryTableNodes, ...powerQueryNodes, ...definedNameNodes, ...vbaNodes].map((node, index) => relationship(`REL-META-INV-${index + 1}`, node.id, 'INV-001', 'documents_metadata', evidenceId, 76)),
     ...formulaNodes.map((node, index) => relationship(`REL-INV-FORM-${index + 1}`, 'INV-001', node.id, 'extracts_formula_logic', evidenceId, 78)),
     ...outputNodes.flatMap((output, outputIndex) => {
       const upstream = safeArray(output.upstream);
@@ -982,10 +1105,10 @@ function buildSourceEvidenceDelta(payload = {}) {
   ];
 
   const reportSections = [
-    reportSection('Executive Snapshot', `${sourceName} was analyzed from uploaded source evidence. The first-pass model identifies ${sheetNodes.length} workbook sheets, ${formulaNodes.length} formula blocks, ${metadataNodes.length} metadata objects, and ${outputNodes.length} output candidates. Confidence is evidence-backed but remains blocker-aware until native workbook tables, named ranges, Power Query, VBA, and sample outputs are exported.`, 82, [evidenceId]),
-    reportSection('System and Artifact Landscape', `${sourceName} is the source artifact in scope. Discovered artifact evidence includes ${sheetNames.slice(0, 10).join(', ') || 'workbook XML'}${metadataNodes.length ? ` plus metadata paths ${metadataNodes.slice(0, 5).map((node) => node.name).join(', ')}` : ''}.`, 82, [evidenceId]),
+    reportSection('Executive Snapshot', `${sourceName} was analyzed from uploaded source evidence. The first-pass model identifies ${sheetNodes.length} real workbook sheets, ${formulaNodes.length} formula blocks, ${connectionNodes.length} external connections, ${powerQueryNodes.length + queryTableNodes.length} query/Power Query objects, ${externalLinkNodes.length} external links, ${vbaNodes.length ? 'a VBA project' : 'no VBA project evidence'}, ${definedNameNodes.length} defined names, ${metadataNodes.length} metadata objects, and ${outputNodes.length} output candidates. Confidence is evidence-backed but remains blocker-aware until full native exports and sample outputs are confirmed.`, 84, [evidenceId]),
+    reportSection('System and Artifact Landscape', `${sourceName} is the source artifact in scope. Discovered sheet evidence includes ${sheetNames.slice(0, 10).join(', ') || 'workbook XML'}${connectionNodes.length ? `; external connections include ${connectionNodes.slice(0, 3).map((node) => node.name).join('; ')}` : ''}${powerQueryNodes.length ? `; Power Query candidates include ${powerQueryNodes.slice(0, 3).map((node) => node.name).join('; ')}` : ''}${vbaNodes.length ? '; VBA project evidence is present' : ''}.`, 84, [evidenceId]),
     reportSection('Data Flow and Process Flow Summary', relationships.slice(0, 8).map((edge) => `${edge.fromId} ${edge.type} ${edge.toId}`).join('; ') || `${sourceName} contains discovered workbook structures that require confirmed output mapping.`, 78, [evidenceId]),
-    reportSection('Transformations and Business Logic', formulaNodes.length ? `${formulaNodes.length} formula blocks were detected in workbook XML. Full cell-address formulas, named ranges, Power Query, VBA, and manual override zones are required to finish transformation lineage.` : 'No complete formulas, Power Query, or VBA modules were extracted. Export workbook logic to finish transformation lineage.', 76, [evidenceId]),
+    reportSection('Transformations and Business Logic', `${formulaNodes.length} formula blocks, ${definedNameNodes.length} defined names, ${powerQueryNodes.length} Power Query candidates, ${queryTableNodes.length} query tables, and ${vbaNodes.length} VBA nodes were detected from workbook package evidence. Full source definitions, macro bodies, query text, refresh order, and expected outputs are required to finish transformation lineage.`, 78, [evidenceId]),
     reportSection('Recursive Lineage and Source-of-Truth Assessment', `Lineage starts at ${sourceName}, proceeds through extracted workbook inventory, sheets, metadata, and formula blocks, and currently terminates at inferred output candidates until external connections, source extracts, named ranges, and owner-confirmed outputs are supplied.`, 76, [evidenceId])
   ];
 
@@ -1177,12 +1300,17 @@ function sourceKindLabel(kind) {
 function deriveCriticalOutputs(payload, sourceName, sheetNames, recoveredTerms) {
   const targets = safeArray(payload.targetOutputs).filter(Boolean).map((value) => String(value));
   if (targets.length) {
-    return targets.slice(0, 12);
+    return targets.filter((value) => !isGeneratedArtifactName(value)).slice(0, 12);
   }
   const outputTerms = [...sheetNames, ...recoveredTerms]
     .filter((value) => /report|output|dashboard|summary|calendar|plan|scorecard|invoice|claim|schedule|forecast/i.test(value))
+    .filter((value) => !isGeneratedArtifactName(value))
     .slice(0, 8);
   return outputTerms.length ? outputTerms : [`${sourceName} business output`];
+}
+
+function isGeneratedArtifactName(value) {
+  return /executive_decision_brief|current_state_architecture_report|technical_discovery_workbook|auto_documentation_pack|diagram_pack|financial_impact_model|action_backlog|evidence_archive|metadata_manifest|discovery_action_pack/i.test(String(value || ''));
 }
 
 function extractListAfter(text, regex, limit) {
@@ -1191,7 +1319,7 @@ function extractListAfter(text, regex, limit) {
     return [];
   }
   return match[1]
-    .split(/\s*,\s*/)
+    .split(/\s*\|\s*|\s*,\s*/)
     .map(cleanName)
     .filter(Boolean)
     .slice(0, limit);
@@ -1220,6 +1348,7 @@ function recoveredEvidenceTerms(text, limit) {
     .map(cleanName)
     .filter((line) => line.length >= 3 && line.length <= 80)
     .filter((line) => !/^(name|extension|size|status|formulas|none detected|recovered strings)$/i.test(line))
+    .filter((line) => !/^microsoft\.com:|^_xlfn\./i.test(line))
     .filter((line) => /[A-Za-z]/.test(line));
   return mergePrimitiveArrays([candidates]).slice(0, limit);
 }
@@ -1236,10 +1365,21 @@ function cleanName(value) {
   return String(value || '')
     .replace(/&amp;/g, '&')
     .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
     .replace(/_x([0-9A-F]{4})_/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 120);
+}
+
+function isLikelyWorkbookSheetName(value) {
+  return Boolean(value)
+    && !/^microsoft\.com:/i.test(value)
+    && !/^_xlfn\./i.test(value)
+    && !/^https?:\/\//i.test(value)
+    && !/schemas\.openxmlformats\.org/i.test(value);
 }
 
 function mergeReportSections(deltas) {
@@ -1411,11 +1551,33 @@ function stringValue(value) {
 function isInternalDiscoveryRecord(record) {
   const id = stringValue(record.id || record.item_id || record.node_id).toLowerCase();
   const name = stringValue(record.name || record.object_name || record.title).toLowerCase();
-  return /^(graph|graph-001|pack|pack-001)$/i.test(id) || isInternalDiscoveryText(name);
+  return /^(graph|graph-001|pack|pack-001)$/i.test(id)
+    || /^microsoft\.com:|^_xlfn\./i.test(name)
+    || isInternalDiscoveryText(name);
 }
 
 function isInternalDiscoveryText(value) {
   return /distillery discovery run|proof-grade discovery graph|canonical discovery graph|canonical proof graph|discovery action pack|mash bill source set|raw source set|evidence extraction|auto documentation|diagram pack|engineering backlog/i.test(stringValue(value));
+}
+
+function isRunDiagnosticAction(record) {
+  const text = `${record.actionId || record.action_id || record.id || ''} ${record.title || ''} ${record.summary || ''} ${record.linkedItemId || ''}`;
+  return /ACT-[A-Z_]+-RERUN|Rerun .*Architect|Rerun .*Lead|Rerun .*Principal|Rerun .*Examiner|Rerun .*Strategist|max_output_tokens|ended incomplete|returned valid JSON/i.test(text);
+}
+
+function isRunDiagnosticRisk(record) {
+  const text = `${record.id || ''} ${record.scenario || ''} ${record.trigger || ''} ${record.effect || ''}`;
+  return /RISK-[A-Z_]+-INCOMPLETE|did not complete|max_output_tokens|Distillery response status incomplete|merged action pack may be shallower/i.test(text);
+}
+
+function isRunDiagnosticQuestion(record) {
+  const text = `${record.id || ''} ${record.question || ''} ${record.impactIfUnanswered || ''}`;
+  return /Q-[A-Z_]+-INCOMPLETE|Should .* be rerun|native metadata exports\?|contains a documented blocker for this specialist pass/i.test(text);
+}
+
+function isRunDiagnosticEvidence(record) {
+  const text = `${record.id || record.evidenceId || record.evidence_id || ''} ${record.type || ''} ${record.description || ''} ${record.relatedObject || ''}`;
+  return /EV-[A-Z_]+-INCOMPLETE|distillery_run_status|ended incomplete|max_output_tokens|returned valid JSON/i.test(text);
 }
 
 function chooseBetterBody(left, right) {

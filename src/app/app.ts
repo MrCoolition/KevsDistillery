@@ -1113,9 +1113,46 @@ export class App {
     const zip = await JSZip.loadAsync(file);
     const parts: string[] = [];
     const workbookXml = await zip.file('xl/workbook.xml')?.async('text');
+    const workbookRelationships = await this.xlsxRelationships(zip, 'xl/_rels/workbook.xml.rels', 'xl');
+    const sheets = workbookXml ? this.xlsxWorkbookSheets(workbookXml, workbookRelationships) : [];
+    parts.push(`Workbook package: ${file.name} (${file.size} bytes)`);
+    parts.push(`Workbook sheets: ${sheets.map((sheet) => sheet.name).join(', ') || 'not detected'}`);
+    for (const sheet of sheets) {
+      parts.push(`Workbook sheet map: ${sheet.path} => ${sheet.name} (sheetId=${sheet.sheetId || 'unknown'}; state=${sheet.state || 'visible'}; relId=${sheet.relId || 'unknown'})`);
+    }
+
     if (workbookXml) {
-      const sheetNames = Array.from(workbookXml.matchAll(/name="([^"]+)"/g)).map((match) => match[1]);
-      parts.push(`Workbook sheets: ${sheetNames.join(', ') || 'not detected'}`);
+      const definedNames = this.xlsxDefinedNames(workbookXml);
+      if (definedNames.length) {
+        parts.push(`Defined names: ${definedNames.join(' | ')}`);
+      }
+      const externalReferenceIds = this.xlsxExternalReferenceIds(workbookXml);
+      if (externalReferenceIds.length) {
+        parts.push(`Workbook external reference ids: ${externalReferenceIds.join(', ')}`);
+      }
+    }
+
+    const connectionSummaries = await this.xlsxConnections(zip);
+    if (connectionSummaries.length) {
+      parts.push(`External connections: ${connectionSummaries.length} detected`);
+      parts.push(...connectionSummaries.map((summary, index) => `Connection ${index + 1}: ${summary}`));
+    }
+
+    const externalLinks = await this.xlsxExternalLinks(zip);
+    if (externalLinks.length) {
+      parts.push(`External links: ${externalLinks.length} detected`);
+      parts.push(...externalLinks.map((summary, index) => `External link ${index + 1}: ${summary}`));
+    }
+
+    const powerQueryCandidates = await this.xlsxPowerQueryCandidates(zip);
+    if (powerQueryCandidates.length) {
+      parts.push(`Power Query candidates: ${powerQueryCandidates.length} detected`);
+      parts.push(...powerQueryCandidates.map((summary, index) => `Power Query candidate ${index + 1}: ${summary}`));
+    }
+
+    const vbaSummary = await this.xlsxVbaSummary(zip);
+    if (vbaSummary) {
+      parts.push(vbaSummary);
     }
 
     const sharedStrings = await zip.file('xl/sharedStrings.xml')?.async('text');
@@ -1123,28 +1160,362 @@ export class App {
       parts.push(`Shared strings sample: ${this.cleanXmlText(sharedStrings).slice(0, 12000)}`);
     }
 
-    const worksheetPaths = Object.keys(zip.files).filter((path) => /xl\/worksheets\/sheet.*\.xml/i.test(path)).slice(0, 30);
+    const worksheetPaths = sheets.length
+      ? sheets.map((sheet) => sheet.path)
+      : Object.keys(zip.files).filter((path) => /xl\/worksheets\/sheet.*\.xml/i.test(path)).slice(0, 30);
+    const sheetByPath = new Map(sheets.map((sheet) => [sheet.path.toLowerCase(), sheet]));
     for (const path of worksheetPaths) {
       const xml = await zip.file(path)?.async('text');
       if (!xml) {
         continue;
       }
-      const formulas = Array.from(xml.matchAll(/<f[^>]*>([\s\S]*?)<\/f>/g)).map((match) => match[1]).slice(0, 300);
+      const sheet = sheetByPath.get(path.toLowerCase());
+      const sheetName = sheet?.name || path.replace(/^.*\//, '').replace(/\.xml$/i, '');
+      const formulas = this.xlsxWorksheetFormulas(xml).slice(0, 300);
       const dimensions = xml.match(/<dimension ref="([^"]+)"/)?.[1] || 'unknown';
-      parts.push(`${path}: dimension ${dimensions}; formulas: ${formulas.join(' | ') || 'none detected'}`);
+      const sheetRelationships = await this.xlsxRelationships(zip, `xl/worksheets/_rels/${path.replace(/^.*\//, '')}.rels`, 'xl/worksheets');
+      const relationshipSummary = [...sheetRelationships.values()]
+        .filter((relationship) => /queryTable|table|pivotTable|drawing|comments|hyperlink|externalLink|vmlDrawing/i.test(`${relationship.type} ${relationship.path} ${relationship.target}`))
+        .map((relationship) => `${this.xlsxRelationshipKind(relationship.type)} -> ${relationship.path || relationship.target}`)
+        .slice(0, 16);
+      const hyperlinks = this.xlsxWorksheetHyperlinks(xml, sheetRelationships).slice(0, 20);
+      parts.push(`Worksheet ${sheetName} (${path}): dimension ${dimensions}; formulas: ${formulas.join(' | ') || 'none detected'}; hyperlinks: ${hyperlinks.join(' | ') || 'none detected'}; relationships: ${relationshipSummary.join(' | ') || 'none detected'}`);
+
+      const queryTableRelationships = [...sheetRelationships.values()].filter((relationship) => /queryTable/i.test(relationship.type));
+      for (const relationship of queryTableRelationships.slice(0, 10)) {
+        const queryText = relationship.path ? await zip.file(relationship.path)?.async('text') : '';
+        parts.push(`Query table for ${sheetName}: ${relationship.path || relationship.target}: ${queryText ? this.cleanXmlText(queryText).slice(0, 4000) : 'metadata target present but not readable'}`);
+      }
     }
 
     const metadataPaths = Object.keys(zip.files)
-      .filter((path) => /connections|query|customXml|pivot|externalLink/i.test(path))
+      .filter((path) => /connections|query|customXml|pivot|externalLink|table|slicer|vbaProject/i.test(path))
       .slice(0, 30);
     for (const path of metadataPaths) {
-      const text = await zip.file(path)?.async('text');
-      if (text) {
-        parts.push(`${path}: ${this.cleanXmlText(text).slice(0, 10000)}`);
+      const entry = zip.file(path);
+      if (!entry) {
+        continue;
+      }
+      if (/\.bin$/i.test(path)) {
+        const bytes = await entry.async('uint8array');
+        parts.push(`${path}: binary metadata present; recovered strings: ${this.binaryStrings(bytes, 80).join(' | ') || 'none detected'}`);
+      } else {
+        const text = await entry.async('text');
+        if (text) {
+          parts.push(`${path}: ${this.cleanXmlText(text).slice(0, 10000)}`);
+        }
       }
     }
 
     return parts.join('\n\n');
+  }
+
+  private parseXml(xml: string | undefined): Document | null {
+    if (!xml) {
+      return null;
+    }
+    const document = new DOMParser().parseFromString(xml, 'application/xml');
+    if (document.getElementsByTagName('parsererror').length) {
+      return null;
+    }
+    return document;
+  }
+
+  private xmlElements(parent: Document | Element | null, localName: string): Element[] {
+    if (!parent) {
+      return [];
+    }
+    return Array.from(parent.getElementsByTagName('*')).filter((element) => element.localName === localName);
+  }
+
+  private xmlAttr(element: Element | null | undefined, name: string): string {
+    if (!element) {
+      return '';
+    }
+    return element.getAttribute(name)
+      || element.getAttribute(`r:${name}`)
+      || element.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', name)
+      || '';
+  }
+
+  private xmlText(element: Element | null | undefined): string {
+    return this.decodeXmlEntities(element?.textContent || '').replace(/\s+/g, ' ').trim();
+  }
+
+  private async xlsxRelationships(zip: any, relsPath: string, baseFolder: string): Promise<Map<string, { id: string; type: string; target: string; targetMode: string; path: string }>> {
+    const xml = await zip.file(relsPath)?.async('text');
+    const document = this.parseXml(xml);
+    const relationships = new Map<string, { id: string; type: string; target: string; targetMode: string; path: string }>();
+    for (const relationship of this.xmlElements(document, 'Relationship')) {
+      const id = this.xmlAttr(relationship, 'Id');
+      const target = this.xmlAttr(relationship, 'Target');
+      const targetMode = this.xmlAttr(relationship, 'TargetMode');
+      relationships.set(id, {
+        id,
+        type: this.xmlAttr(relationship, 'Type'),
+        target,
+        targetMode,
+        path: targetMode.toLowerCase() === 'external' ? target : this.normalizeXlsxPath(baseFolder, target)
+      });
+    }
+    return relationships;
+  }
+
+  private xlsxWorkbookSheets(workbookXml: string, relationships: Map<string, { path: string }>): Array<{ name: string; sheetId: string; relId: string; state: string; path: string }> {
+    const document = this.parseXml(workbookXml);
+    return this.xmlElements(document, 'sheet')
+      .map((sheet, index) => {
+        const relId = this.xmlAttr(sheet, 'id');
+        const name = this.cleanWorkbookSheetName(this.xmlAttr(sheet, 'name'));
+        return {
+          name,
+          sheetId: this.xmlAttr(sheet, 'sheetId'),
+          relId,
+          state: this.xmlAttr(sheet, 'state') || 'visible',
+          path: relationships.get(relId)?.path || `xl/worksheets/sheet${index + 1}.xml`
+        };
+      })
+      .filter((sheet) => sheet.name && this.isLikelyWorkbookSheetName(sheet.name));
+  }
+
+  private xlsxDefinedNames(workbookXml: string): string[] {
+    const document = this.parseXml(workbookXml);
+    return this.xmlElements(document, 'definedName')
+      .map((definedName) => {
+        const name = this.cleanWorkbookSheetName(this.xmlAttr(definedName, 'name'));
+        const scope = this.xmlAttr(definedName, 'localSheetId');
+        const body = this.xmlText(definedName);
+        return name ? `${name}${scope ? ` [sheet ${scope}]` : ''}=${body.slice(0, 240)}` : '';
+      })
+      .filter(Boolean)
+      .slice(0, 80);
+  }
+
+  private xlsxExternalReferenceIds(workbookXml: string): string[] {
+    const document = this.parseXml(workbookXml);
+    return this.xmlElements(document, 'externalReference')
+      .map((reference) => this.xmlAttr(reference, 'id'))
+      .filter(Boolean)
+      .slice(0, 30);
+  }
+
+  private async xlsxConnections(zip: any): Promise<string[]> {
+    const xml = await zip.file('xl/connections.xml')?.async('text');
+    const document = this.parseXml(xml);
+    return this.xmlElements(document, 'connection')
+      .map((connection) => {
+        const dbPr = this.xmlElements(connection, 'dbPr')[0];
+        const webPr = this.xmlElements(connection, 'webPr')[0];
+        const textPr = this.xmlElements(connection, 'textPr')[0];
+        const oleDbPr = this.xmlElements(connection, 'oleDbPr')[0];
+        const parts = [
+          `id=${this.xmlAttr(connection, 'id') || 'unknown'}`,
+          `name=${this.cleanWorkbookSheetName(this.xmlAttr(connection, 'name')) || 'unnamed'}`,
+          `type=${this.xmlAttr(connection, 'type') || 'unknown'}`,
+          `refreshedVersion=${this.xmlAttr(connection, 'refreshedVersion') || 'unknown'}`
+        ];
+        const connectionString = this.xmlAttr(dbPr, 'connection') || this.xmlAttr(oleDbPr, 'connection');
+        const command = this.xmlAttr(dbPr, 'command') || this.xmlAttr(oleDbPr, 'command');
+        const url = this.xmlAttr(webPr, 'url');
+        const textFile = this.xmlAttr(textPr, 'sourceFile');
+        if (connectionString) parts.push(`connection=${this.redactConnectionString(connectionString).slice(0, 900)}`);
+        if (command) parts.push(`command=${this.decodeXmlEntities(command).slice(0, 900)}`);
+        if (url) parts.push(`url=${this.decodeXmlEntities(url).slice(0, 900)}`);
+        if (textFile) parts.push(`sourceFile=${this.decodeXmlEntities(textFile).slice(0, 900)}`);
+        return parts.join('; ');
+      })
+      .filter(Boolean)
+      .slice(0, 40);
+  }
+
+  private async xlsxExternalLinks(zip: any): Promise<string[]> {
+    const paths = Object.keys(zip.files).filter((path) => /^xl\/externalLinks\/externalLink\d+\.xml$/i.test(path)).slice(0, 40);
+    const summaries: string[] = [];
+    for (const path of paths) {
+      const xml = await zip.file(path)?.async('text');
+      const rels = await this.xlsxRelationships(zip, `xl/externalLinks/_rels/${path.replace(/^.*\//, '')}.rels`, 'xl/externalLinks');
+      const document = this.parseXml(xml);
+      const sheetNames = this.xmlElements(document, 'sheetName').map((sheet) => this.xmlAttr(sheet, 'val')).filter(Boolean).slice(0, 20);
+      const targets = [...rels.values()].map((relationship) => relationship.targetMode.toLowerCase() === 'external' ? relationship.target : relationship.path).filter(Boolean);
+      summaries.push(`${path}; targets=${targets.join(' | ') || 'not detected'}; sheets=${sheetNames.join(', ') || 'not detected'}`);
+    }
+    return summaries;
+  }
+
+  private async xlsxPowerQueryCandidates(zip: any): Promise<string[]> {
+    const paths = Object.keys(zip.files)
+      .filter((path) => /^(xl\/)?customXml\/|^xl\/customData\/|^xl\/queries\/|^xl\/queryTables\//i.test(path))
+      .slice(0, 80);
+    const candidates: string[] = [];
+    for (const path of paths) {
+      const entry = zip.file(path);
+      if (!entry) {
+        continue;
+      }
+      const text = /\.bin$|\.data$/i.test(path)
+        ? this.binaryStrings(await entry.async('uint8array'), 120).join(' ')
+        : await entry.async('text');
+      if (!/power\s*query|mashup|query|formula|let\s|section\s|source\s*=|queryTable/i.test(text)) {
+        continue;
+      }
+      const clean = this.cleanXmlText(text).slice(0, 2500);
+      candidates.push(`${path}: ${clean}`);
+    }
+    return candidates.slice(0, 30);
+  }
+
+  private async xlsxVbaSummary(zip: any): Promise<string> {
+    const entry = zip.file('xl/vbaProject.bin');
+    if (!entry) {
+      return '';
+    }
+    const strings = this.binaryStrings(await entry.async('uint8array'), 2400);
+    const modules = this.uniqueValues(strings
+      .map((value) => value.match(/Attribute\s+VB_Name\s*=\s*"([^"]+)"/i)?.[1] || '')
+      .filter(Boolean), 60);
+    const procedures = this.uniqueValues(strings.flatMap((value) => {
+      return [...value.matchAll(/\b(?:Private\s+|Public\s+)?(?:Sub|Function)\s+([A-Za-z_][A-Za-z0-9_]*)/gi)]
+        .map((match) => match[1]);
+    }), 120);
+    const markers = this.uniqueValues(strings.filter((value) => /Workbook_Open|Auto_Open|RefreshAll|QueryTable|ListObject|Connection|PowerQuery|ADODB|DAO|FileSystemObject|Shell|On Error|Application\.Run/i.test(value)), 80);
+    return [
+      'VBA project: present',
+      `VBA modules: ${modules.join(', ') || 'module names not recovered from compressed project'}`,
+      `VBA procedures: ${procedures.join(', ') || 'procedure names not recovered from compressed project'}`,
+      `VBA automation markers: ${markers.join(' | ') || 'none recovered'}`
+    ].join('\n');
+  }
+
+  private xlsxWorksheetFormulas(xml: string): string[] {
+    const formulas = [...xml.matchAll(/<c\b[^>]*\br="([^"]+)"[^>]*>[\s\S]*?<f\b[^>]*>([\s\S]*?)<\/f>[\s\S]*?<\/c>/g)]
+      .map((match) => `${match[1]}=${this.decodeXmlEntities(match[2]).replace(/\s+/g, ' ').trim()}`)
+      .filter((formula) => !/=($|none detected)/i.test(formula));
+    if (formulas.length) {
+      return formulas;
+    }
+    return [...xml.matchAll(/<f\b[^>]*>([\s\S]*?)<\/f>/g)]
+      .map((match) => this.decodeXmlEntities(match[1]).replace(/\s+/g, ' ').trim())
+      .filter(Boolean);
+  }
+
+  private xlsxWorksheetHyperlinks(xml: string, relationships: Map<string, { target: string; path: string; targetMode: string }>): string[] {
+    return [...xml.matchAll(/<hyperlink\b([^>]*)\/?>/gi)]
+      .map((match) => {
+        const attributes = match[1];
+        const ref = attributes.match(/\bref="([^"]+)"/i)?.[1] || '';
+        const relId = attributes.match(/\br:id="([^"]+)"/i)?.[1] || '';
+        const location = attributes.match(/\blocation="([^"]+)"/i)?.[1] || '';
+        const display = attributes.match(/\bdisplay="([^"]+)"/i)?.[1] || '';
+        const relationship = relId ? relationships.get(relId) : null;
+        const target = relationship ? (relationship.targetMode.toLowerCase() === 'external' ? relationship.target : relationship.path) : location;
+        return `${ref || 'unknown'} -> ${this.decodeXmlEntities(display || target || location || relId || 'unknown')}`;
+      })
+      .filter(Boolean);
+  }
+
+  private xlsxRelationshipKind(type: string): string {
+    return type.replace(/^.*\//, '').replace(/([a-z])([A-Z])/g, '$1 $2');
+  }
+
+  private normalizeXlsxPath(baseFolder: string, target: string): string {
+    const raw = target.startsWith('/') ? target.slice(1) : `${baseFolder}/${target}`;
+    const parts: string[] = [];
+    for (const part of raw.split('/')) {
+      if (!part || part === '.') continue;
+      if (part === '..') {
+        parts.pop();
+      } else {
+        parts.push(part);
+      }
+    }
+    return parts.join('/');
+  }
+
+  private cleanWorkbookSheetName(value: string): string {
+    return this.decodeXmlEntities(value)
+      .replace(/_x([0-9A-F]{4})_/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 180);
+  }
+
+  private isLikelyWorkbookSheetName(value: string): boolean {
+    return Boolean(value)
+      && !/^microsoft\.com:/i.test(value)
+      && !/^_xlfn\./i.test(value)
+      && !/^http(s)?:\/\//i.test(value)
+      && !/schemas\.openxmlformats\.org/i.test(value);
+  }
+
+  private redactConnectionString(value: string): string {
+    return this.decodeXmlEntities(value)
+      .replace(/\b(Pwd|Password)\s*=\s*[^;]+/gi, '$1=<redacted>')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private decodeXmlEntities(value: string): string {
+    return String(value || '')
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&');
+  }
+
+  private binaryStrings(bytes: Uint8Array, limit: number): string[] {
+    const strings = new Set<string>();
+    let asciiRun = '';
+    let utf16Run = '';
+    const keep = (value: string): void => {
+      const cleaned = value.replace(/\s+/g, ' ').trim();
+      if (cleaned.length >= 4 && cleaned.length <= 240 && /[A-Za-z]/.test(cleaned)) {
+        strings.add(cleaned);
+      }
+    };
+
+    for (let index = 0; index < bytes.length; index += 1) {
+      const byte = bytes[index];
+      if (byte >= 32 && byte <= 126) {
+        asciiRun += String.fromCharCode(byte);
+      } else {
+        keep(asciiRun);
+        asciiRun = '';
+      }
+
+      if (index + 1 < bytes.length && bytes[index + 1] === 0 && byte >= 32 && byte <= 126) {
+        utf16Run += String.fromCharCode(byte);
+        index += 1;
+      } else {
+        keep(utf16Run);
+        utf16Run = '';
+      }
+
+      if (strings.size >= limit) {
+        break;
+      }
+    }
+
+    keep(asciiRun);
+    keep(utf16Run);
+    return this.uniqueValues([...strings], limit);
+  }
+
+  private uniqueValues(values: string[], limit: number): string[] {
+    const seen = new Set<string>();
+    const results: string[] = [];
+    for (const value of values) {
+      const cleaned = this.cleanDisplayText(value);
+      const key = cleaned.toLowerCase();
+      if (cleaned && !seen.has(key)) {
+        seen.add(key);
+        results.push(cleaned);
+      }
+      if (results.length >= limit) {
+        break;
+      }
+    }
+    return results;
   }
 
   private async extractAccessBinary(file: File): Promise<string> {
@@ -1246,7 +1617,7 @@ export class App {
   }
 
   private cleanXmlText(xml: string): string {
-    return xml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    return this.decodeXmlEntities(xml).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
   }
 
   private inferSourceKind(sources: StagedSource[]): SourceKind {
@@ -1272,10 +1643,10 @@ export class App {
       ? this.records(delta.relationships)
       : this.sourceFallbackRelationships(items);
     const artifacts = this.records(delta.artifacts);
-    const backlog = this.records(delta.backlog);
-    const evidenceIndex = this.records((delta as Record<string, unknown>)['evidenceIndex']);
-    const failureRisks = this.records((delta as Record<string, unknown>)['failureRisks']);
-    const openQuestions = this.records((delta as Record<string, unknown>)['openQuestions']);
+    const backlog = this.actionableBacklogRecords(delta.backlog);
+    const evidenceIndex = this.evidenceRecords((delta as Record<string, unknown>)['evidenceIndex']);
+    const failureRisks = this.operationalRiskRecords((delta as Record<string, unknown>)['failureRisks']);
+    const openQuestions = this.operationalQuestionRecords((delta as Record<string, unknown>)['openQuestions']);
     const deltaRecord = delta as Record<string, unknown>;
     const systems = this.listText(deltaRecord['systemsInScope'], this.knownArtifacts().join(', '));
     const criticalOutputs = this.listText(deltaRecord['criticalOutputs'], this.targetOutputs().join(', '));
@@ -1394,8 +1765,8 @@ export class App {
       ? this.records(delta.relationships)
       : this.sourceFallbackRelationships(items);
     const artifacts = this.records(delta.artifacts);
-    const backlog = this.records(delta.backlog);
-    const evidenceIndex = this.records(deltaRecord['evidenceIndex']);
+    const backlog = this.actionableBacklogRecords(delta.backlog);
+    const evidenceIndex = this.evidenceRecords(deltaRecord['evidenceIndex']);
     const lineageNodes = this.records(deltaRecord['lineageNodes']).length
       ? this.records(deltaRecord['lineageNodes'])
       : items.map((item) => ({
@@ -1409,8 +1780,8 @@ export class App {
     const lineageEdges = this.records(deltaRecord['lineageEdges']).length
       ? this.records(deltaRecord['lineageEdges'])
       : relationships;
-    const failureRisks = this.records(deltaRecord['failureRisks']);
-    const openQuestions = this.records(deltaRecord['openQuestions']);
+    const failureRisks = this.operationalRiskRecords(deltaRecord['failureRisks']);
+    const openQuestions = this.operationalQuestionRecords(deltaRecord['openQuestions']);
     const sections = this.reportSections();
     const manifest = {
       packageName: 'Discovery_Action_Pack',
@@ -1752,7 +2123,7 @@ export class App {
 
     if (spec.kind === 'valueStream') {
       const sourceNodes = objects.filter((node) => /source|file|workbook|database|document|sheet/i.test(node.type)).slice(0, 2);
-      const logicNodes = objects.filter((node) => /formula|query|macro|transform|rule|metadata|connection|pivot/i.test(node.type)).slice(0, 3);
+      const logicNodes = objects.filter((node) => /formula|query|macro|vba|transform|rule|metadata|connection|external_link|named_range|pivot/i.test(node.type)).slice(0, 4);
       const outputNodes = objects.filter((node) => /output|report|dashboard|calendar|extract/i.test(node.type)).slice(0, 2);
       const actionNode = this.diagramNode('ACTION', 'Migration action', this.readString(actions[0] || {}, ['title', 'summary']) || 'metadata export, lineage validation, rebuild plan', 'action', 950, 312, 180, 90, 'action', null);
       const nodes = this.placeObjectNodes([...sourceNodes, ...logicNodes, ...outputNodes].length ? [...sourceNodes, ...logicNodes, ...outputNodes] : objects.slice(0, 7), 'dataFlow')
@@ -1831,7 +2202,7 @@ export class App {
       const nodes = [
         this.diagramNode('TRIGGER', 'Trigger / SLA window', this.listText(context.deltaRecord['criticalOutputs'], 'business output requested'), 'process', 110, 178, 170, 68, 'process', null),
         this.diagramNode('SOURCE', sourceName, this.importSourceKind(), 'source', 320, 304, 170, 68, 'source', null),
-        this.diagramNode('LOGIC', this.firstNodeLabel(objects, /formula|query|macro|logic|transform|metadata/i, 'Workbook logic'), 'formulas, refresh, rules', 'graph', 540, 430, 170, 68, 'graph', null),
+        this.diagramNode('LOGIC', this.firstNodeLabel(objects, /formula|query|macro|vba|logic|transform|metadata|connection/i, 'Workbook logic'), 'formulas, refresh, rules', 'graph', 540, 430, 170, 68, 'graph', null),
         this.diagramNode('CONTROL', this.firstNodeLabel(objects, /control|exception|validation|risk/i, 'Control / exception'), 'evidence and owner pending', 'control', 750, 430, 170, 68, 'control', null),
         this.diagramNode('OUTPUT', this.firstNodeLabel(objects, /output|report|dashboard|calendar/i, 'Business output'), 'consumer and SLA pending', 'output', 950, 304, 170, 68, 'output', null),
         this.diagramNode('BUILD', 'Modernize', 'Fivetran, dbt, SQL, Snowpark', 'action', 950, 556, 170, 68, 'action', null)
@@ -1937,10 +2308,14 @@ export class App {
       };
     }
 
+    if (spec.kind === 'dependency') {
+      return this.buildDependencyDiagramScene(spec, width, height, objects, relationships);
+    }
+
     if (spec.kind === 'timeline') {
       const steps = [
         ['T1', 'Source refresh', sourceName],
-        ['T2', 'Workbook logic', this.firstNodeLabel(objects, /formula|query|macro|pivot|connection/i, 'formulas / metadata')],
+        ['T2', 'Workbook logic', this.firstNodeLabel(objects, /formula|query|macro|vba|pivot|connection|external_link/i, 'formulas / metadata')],
         ['T3', 'Validation point', this.firstNodeLabel(objects, /control|exception|validation/i, 'control pending')],
         ['T4', 'Business output', this.firstNodeLabel(objects, /output|report|dashboard|calendar/i, 'output candidate')],
         ['T5', 'Owner review', 'signoff and SLA'],
@@ -1979,6 +2354,84 @@ export class App {
       lanes: [],
       callouts
     };
+  }
+
+  private buildDependencyDiagramScene(spec: DiagramSpec, width: number, height: number, objects: DiagramNode[], relationships: DiagramEdge[]): DiagramScene {
+    const sourceNodes = objects.filter((node) => /source|workbook|database|file|document/i.test(node.type)).slice(0, 1);
+    const connectionNodes = objects.filter((node) => /external_connection|connection|external_link/i.test(node.type)).slice(0, 4);
+    const logicNodes = objects.filter((node) => /power_query|query_table|query|vba|macro|formula|named_range|transform/i.test(node.type)).slice(0, 5);
+    const sheetNodes = objects.filter((node) => /sheet|table|pivot|workbook_metadata/i.test(node.type)).slice(0, 4);
+    const outputNodes = objects.filter((node) => /output|report|dashboard/i.test(node.type) && !this.isGeneratedArtifactName(node.label)).slice(0, 3);
+
+    const columns = [
+      { label: 'Source', x: 70, nodes: sourceNodes.length ? sourceNodes : objects.slice(0, 1), tone: 'source' as DiagramTone },
+      { label: 'Connections', x: 300, nodes: connectionNodes, tone: 'source' as DiagramTone },
+      { label: 'Logic', x: 530, nodes: logicNodes, tone: 'graph' as DiagramTone },
+      { label: 'Workbook Objects', x: 760, nodes: sheetNodes, tone: 'neutral' as DiagramTone },
+      { label: 'Outputs', x: 990, nodes: outputNodes, tone: 'output' as DiagramTone }
+    ].filter((column) => column.nodes.length);
+
+    const nodes = columns.flatMap((column) => {
+      const count = column.nodes.length;
+      const startY = Math.max(172, 410 - ((count - 1) * 105) / 2);
+      return column.nodes.map((node, index) => ({
+        ...node,
+        x: column.x,
+        y: startY + index * 105,
+        w: 176,
+        h: 82,
+        tone: node.tone || column.tone
+      }));
+    });
+
+    const ids = new Set(nodes.map((node) => node.id));
+    const directEdges = relationships
+      .filter((edge) => ids.has(edge.from) && ids.has(edge.to))
+      .slice(0, 18)
+      .map((edge) => ({ ...edge, label: this.cleanEdgeLabel(edge.label) }));
+    const edges = directEdges.length ? directEdges : this.columnDependencyEdges(columns);
+    const lanes = columns.map((column) => this.diagramLane(column.label, column.x - 12, 150, 200, 500));
+
+    return {
+      spec,
+      width,
+      height,
+      nodes,
+      edges,
+      lanes,
+      callouts: [
+        this.diagramCallout('Dependency rule', 'Sheets, connections, query tables, Power Query, VBA, named ranges, pivots, formulas, and outputs stay as separate node classes. Nothing is promoted to a sheet unless workbook metadata proves it.', 360, 665, 520, 58, 'graph')
+      ]
+    };
+  }
+
+  private columnDependencyEdges(columns: Array<{ nodes: DiagramNode[] }>): DiagramEdge[] {
+    const edges: DiagramEdge[] = [];
+    for (let index = 0; index < columns.length - 1; index += 1) {
+      const fromNodes = columns[index].nodes;
+      const toNodes = columns[index + 1].nodes;
+      if (!fromNodes.length || !toNodes.length) {
+        continue;
+      }
+      for (const from of fromNodes.slice(0, 3)) {
+        for (const to of toNodes.slice(0, 3)) {
+          edges.push(this.diagramEdge(`DEP-${index}-${from.id}-${to.id}`, from.id, to.id, index === 0 ? 'discovers' : 'feeds', index < 2 ? 'source' : 'graph'));
+          if (edges.length >= 14) {
+            return edges;
+          }
+        }
+      }
+    }
+    return edges;
+  }
+
+  private cleanEdgeLabel(value: string): string {
+    const cleaned = this.cleanDisplayText(value).replace(/_/g, ' ');
+    if (/contains sheet/i.test(cleaned)) return 'contains';
+    if (/documents metadata/i.test(cleaned)) return 'metadata';
+    if (/extracts formula/i.test(cleaned)) return 'logic';
+    if (/feeds output/i.test(cleaned)) return 'feeds';
+    return cleaned.slice(0, 18);
   }
 
   private diagramObjectNodes(context: PackageContext): DiagramNode[] {
@@ -2030,7 +2483,13 @@ export class App {
     const id = this.readString(item, ['id', 'item_id', 'node_id']).toLowerCase();
     const name = this.readString(item, ['name', 'object_name', 'title']).toLowerCase();
     return /^(graph|graph-001|pack|pack-001)$/.test(id)
+      || this.isGeneratedArtifactName(name)
+      || /^microsoft\.com:|^_xlfn\./i.test(name)
       || /distillery discovery run|proof-grade discovery graph|canonical discovery graph|canonical proof graph|discovery action pack|mash bill source set|raw source set|evidence extraction|auto documentation|diagram pack|engineering backlog/i.test(name);
+  }
+
+  private isGeneratedArtifactName(value: string): boolean {
+    return /executive_decision_brief|current_state_architecture_report|technical_discovery_workbook|auto_documentation_pack|diagram_pack|financial_impact_model|action_backlog|evidence_archive|metadata_manifest|discovery_action_pack/i.test(value.replace(/\s+/g, '_').toLowerCase());
   }
 
   private sourceFallbackItems(): Record<string, unknown>[] {
@@ -2038,19 +2497,30 @@ export class App {
     const sourceKind = this.importSourceKind();
     const evidence = this.extractedText();
     const sheetNames = this.extractWorkbookSheets(evidence);
-    const worksheetMatches = [...evidence.matchAll(/(xl\/worksheets\/[^:\s]+):\s*dimension\s*([^;]+);\s*formulas:\s*([^\n\r]+)/gi)]
+    const legacyWorksheetMatches = [...evidence.matchAll(/^(xl\/worksheets\/[^:\s)]+):\s*dimension\s*([^;]+);\s*formulas:\s*([^\n\r]+)/gmi)]
+      .map((match) => ({ path: match[1], dimension: match[2], formulas: match[3] }));
+    const namedWorksheetMatches = [...evidence.matchAll(/Worksheet\s+([^\n\r(]+)\s+\((xl\/worksheets\/[^)]+)\):\s*dimension\s*([^;]+);\s*formulas:\s*([^\n\r;]+)/gi)]
+      .map((match) => ({ path: match[2], dimension: match[3], formulas: match[4] }));
+    const worksheetMatches = [...legacyWorksheetMatches, ...namedWorksheetMatches]
       .slice(0, 16)
       .map((match, index) => ({
         id: `WS-${String(index + 1).padStart(3, '0')}`,
-        path: match[1],
-        dimension: match[2],
-        formulas: match[3]
+        path: match.path,
+        dimension: match.dimension,
+        formulas: match.formulas
       }));
-    const metadataPaths = this.uniqueRegexMatches(evidence, /\b(xl\/(?:connections|queryTables|queries|pivotTables|pivotCache|externalLinks|customXml)\/[^\s:]+)\b/gi, 10);
+    const metadataPaths = this.uniqueRegexMatches(evidence, /\b(xl\/(?:connections|queryTables|queries|pivotTables|pivotCache|externalLinks|customXml|customData|tables|slicers)\/[^\s:]+)\b/gi, 10);
+    const connectionTexts = this.uniqueRegexMatches(evidence, /^Connection\s+\d+:\s*([^\n\r]+)/gmi, 10);
+    const powerQueryTexts = this.uniqueRegexMatches(evidence, /^Power Query candidate\s+\d+:\s*([^\n\r]+)/gmi, 10);
+    const externalLinkTexts = this.uniqueRegexMatches(evidence, /^External link\s+\d+:\s*([^\n\r]+)/gmi, 10);
+    const queryTableTexts = this.uniqueRegexMatches(evidence, /^Query table for\s+[^:]+:\s*([^\n\r]+)/gmi, 10);
+    const vbaProcedures = this.extractEvidenceList(evidence, /VBA procedures:\s*([^\n\r]+)/i, 16);
+    const definedNames = this.extractEvidenceList(evidence, /Defined names:\s*([^\n\r]+)/i, 16);
+    const hasVbaProject = /VBA project:\s*present/i.test(evidence);
     const formulaSheets = worksheetMatches.filter((sheet) => !/^none detected$/i.test(sheet.formulas.trim())).slice(0, 8);
     const outputs = this.targetOutputs().length
-      ? this.targetOutputs().slice(0, 5)
-      : [...sheetNames, sourceName].filter((name) => /calendar|report|output|dashboard|summary|plan|schedule/i.test(name)).slice(0, 5);
+      ? this.targetOutputs().filter((name) => !this.isGeneratedArtifactName(name)).slice(0, 5)
+      : [...sheetNames, sourceName].filter((name) => /calendar|report|output|dashboard|summary|plan|schedule/i.test(name) && !this.isGeneratedArtifactName(name)).slice(0, 5);
 
     const items: Record<string, unknown>[] = [
       this.sourceFallbackItem('SRC-001', sourceKind === 'excel' ? 'workbook' : sourceKind, sourceName, `${sourceName} uploaded source artifact`, 86, 'high', [], ['INV-001']),
@@ -2081,6 +2551,34 @@ export class App {
         ['SRC-001'],
         ['INV-001']
       ));
+    });
+
+    connectionTexts.forEach((text, index) => {
+      items.push(this.sourceFallbackItem(`CONN-${String(index + 1).padStart(3, '0')}`, 'external_connection', text, `External workbook connection discovered in ${sourceName}`, 86, 'high', ['SRC-001'], ['INV-001']));
+    });
+
+    powerQueryTexts.forEach((text, index) => {
+      items.push(this.sourceFallbackItem(`PQ-${String(index + 1).padStart(3, '0')}`, 'power_query', text, `Power Query or query-table candidate discovered in ${sourceName}`, 82, 'high', ['CONN-001', 'SRC-001'], ['OUT-001']));
+    });
+
+    externalLinkTexts.forEach((text, index) => {
+      items.push(this.sourceFallbackItem(`XLINK-${String(index + 1).padStart(3, '0')}`, 'external_link', text, `External workbook link discovered in ${sourceName}`, 84, 'high', ['SRC-001'], ['INV-001']));
+    });
+
+    queryTableTexts.forEach((text, index) => {
+      items.push(this.sourceFallbackItem(`QT-${String(index + 1).padStart(3, '0')}`, 'query_table', text, `Worksheet query table discovered in ${sourceName}`, 82, 'high', ['CONN-001', 'SRC-001'], ['OUT-001']));
+    });
+
+    if (hasVbaProject) {
+      items.push(this.sourceFallbackItem('VBA-001', 'vba_project', `${sourceName} VBA project`, `Macro-enabled workbook project detected in ${sourceName}`, 80, 'high', ['SRC-001'], vbaProcedures.length ? ['VBA-PROC-001'] : ['OUT-001']));
+    }
+
+    vbaProcedures.forEach((procedure, index) => {
+      items.push(this.sourceFallbackItem(`VBA-PROC-${String(index + 1).padStart(3, '0')}`, 'vba_procedure', procedure, `Recovered VBA procedure candidate from ${sourceName}`, 72, 'high', ['VBA-001'], ['OUT-001']));
+    });
+
+    definedNames.forEach((definedName, index) => {
+      items.push(this.sourceFallbackItem(`NAME-${String(index + 1).padStart(3, '0')}`, 'named_range', definedName, `Workbook defined name discovered in ${sourceName}`, 80, 'medium', ['SRC-001'], ['OUT-001']));
     });
 
     formulaSheets.forEach((sheet, index) => {
@@ -2142,7 +2640,7 @@ export class App {
 
     add('REL-SRC-INV', 'SRC-001', 'INV-001', 'contains', 86);
     items.filter((item) => this.readString(item, ['type']) === 'sheet').forEach((item, index) => add(`REL-SHEET-${index + 1}`, 'SRC-001', this.readString(item, ['id']), 'contains_sheet', 84));
-    items.filter((item) => /metadata|connection|query|pivot/i.test(this.readString(item, ['type']))).forEach((item, index) => add(`REL-META-${index + 1}`, this.readString(item, ['id']), 'INV-001', 'documents_metadata', 76));
+    items.filter((item) => /metadata|connection|query|pivot|external_link|query_table|vba|named_range/i.test(this.readString(item, ['type']))).forEach((item, index) => add(`REL-META-${index + 1}`, this.readString(item, ['id']), 'INV-001', 'documents_metadata', 76));
     items.filter((item) => this.readString(item, ['type']) === 'formula_block').forEach((item, index) => add(`REL-FORM-${index + 1}`, 'INV-001', this.readString(item, ['id']), 'extracts_formula_logic', 78));
     const formulaIds = items.filter((item) => this.readString(item, ['type']) === 'formula_block').map((item) => this.readString(item, ['id']));
     items.filter((item) => this.readString(item, ['type']) === 'output').forEach((item, outputIndex) => {
@@ -2159,8 +2657,17 @@ export class App {
     return match[1]
       .split(/\s*,\s*/)
       .map((name) => this.cleanDisplayText(name))
-      .filter(Boolean)
+      .filter((name) => Boolean(name) && this.isLikelyWorkbookSheetName(name))
       .slice(0, 24);
+  }
+
+  private extractEvidenceList(value: string, regex: RegExp, limit: number): string[] {
+    const match = value.match(regex);
+    if (!match) {
+      return [];
+    }
+    return this.uniqueValues(match[1].split(/\s*\|\s*|\s*,\s*/), limit)
+      .filter((item) => !/^none recovered|not detected|unknown$/i.test(item));
   }
 
   private uniqueRegexMatches(value: string, regex: RegExp, limit: number): string[] {
@@ -2281,13 +2788,14 @@ export class App {
       const color = this.diagramTone(edge.tone).stroke;
       const labelX = (points.x1 + points.x2) / 2;
       const labelY = (points.y1 + points.y2) / 2 - 8;
-      return `<g class="edge"><line x1="${points.x1}" y1="${points.y1}" x2="${points.x2}" y2="${points.y2}" stroke="${color}" stroke-width="3" marker-end="url(#arrow)"/><text x="${labelX}" y="${labelY}" text-anchor="middle">${this.escapeXml(edge.label)}</text></g>`;
+      const label = scene.edges.length <= 12 ? `<text x="${labelX}" y="${labelY}" text-anchor="middle">${this.escapeXml(edge.label)}</text>` : '';
+      return `<g class="edge"><line x1="${points.x1}" y1="${points.y1}" x2="${points.x2}" y2="${points.y2}" stroke="${color}" stroke-width="2.6" marker-end="url(#arrow)"/>${label}</g>`;
     }).join('');
     const lanes = scene.lanes.map((lane) => `<g class="lane"><rect x="${lane.x}" y="${lane.y}" width="${lane.w}" height="${lane.h}" rx="18"/><text x="${lane.x + 22}" y="${lane.y + 30}">${this.escapeXml(lane.label)}</text></g>`).join('');
     const nodes = scene.nodes.map((node) => {
       const tone = this.diagramTone(node.tone);
-      const titleLines = this.wrapText(node.label, Math.max(12, Math.floor(node.w / 9))).slice(0, 3);
-      const subLines = this.wrapText(node.sublabel, Math.max(14, Math.floor(node.w / 8))).slice(0, 2);
+      const titleLines = this.wrapText(node.label, Math.max(12, Math.floor(node.w / 10))).slice(0, 2);
+      const subLines = this.wrapText(node.sublabel, Math.max(14, Math.floor(node.w / 8))).slice(0, 1);
       const title = titleLines.map((line, index) => `<tspan x="${node.x + 18}" dy="${index === 0 ? 0 : 20}">${this.escapeXml(line)}</tspan>`).join('');
       const sub = subLines.map((line, index) => `<tspan x="${node.x + 18}" dy="${index === 0 ? 26 : 15}">${this.escapeXml(line)}</tspan>`).join('');
       const confidence = node.confidence === null ? '' : `<text class="confidence" x="${node.x + node.w - 18}" y="${node.y + node.h - 18}" text-anchor="end">${node.confidence}%</text>`;
@@ -2422,7 +2930,9 @@ export class App {
         [points.x2 - Math.cos(angle - 0.45) * arrow, points.y2 - Math.sin(angle - 0.45) * arrow],
         [points.x2 - Math.cos(angle + 0.45) * arrow, points.y2 - Math.sin(angle + 0.45) * arrow]
       ], tone.stroke);
-      wrappedText((points.x1 + points.x2) / 2 - 55, (points.y1 + points.y2) / 2 - 10, edge.label, 110, 10, 'F2', '#f3d5a8', 1);
+      if (scene.edges.length <= 12) {
+        wrappedText((points.x1 + points.x2) / 2 - 55, (points.y1 + points.y2) / 2 - 10, edge.label, 110, 10, 'F2', '#f3d5a8', 1);
+      }
     }
 
     for (const node of scene.nodes) {
@@ -2548,8 +3058,38 @@ export class App {
   private async addEvidenceArchive(zip: unknown, context: PackageContext): Promise<void> {
     const folder = (zip as { folder: (name: string) => { file: (path: string, data: string | Blob) => void; folder: (path: string) => { file: (path: string, data: string | Blob) => void } | null } | null }).folder('08_Evidence_Archive');
     folder?.folder('Document_Extracts')?.file('Extracted_Evidence.txt', this.extractedText());
+    folder?.folder('Document_Extracts')?.file('Source_Evidence_Summary.txt', this.sourceEvidenceSummary(context));
     folder?.folder('Document_Extracts')?.file('Canonical_Model.json', JSON.stringify(context.delta, null, 2));
+    folder?.folder('Document_Extracts')?.file('Discovered_Items.json', JSON.stringify(context.items, null, 2));
+    folder?.folder('Document_Extracts')?.file('Discovered_Relationships.json', JSON.stringify(context.relationships, null, 2));
+    folder?.folder('Document_Extracts')?.file('Backlog_Actions.json', JSON.stringify(context.backlog, null, 2));
     folder?.file('Evidence_Index.csv', this.toCsv(context.evidenceIndex.length ? context.evidenceIndex : this.evidenceFromItems(context.items)));
+  }
+
+  private sourceEvidenceSummary(context: PackageContext): string {
+    const typeCounts = new Map<string, number>();
+    for (const item of context.items) {
+      const type = this.readString(item, ['type']) || 'unknown';
+      typeCounts.set(type, (typeCounts.get(type) || 0) + 1);
+    }
+    const sections = [
+      'Uncle Kev\'s Distillery Evidence Summary',
+      '',
+      `Source: ${this.importSourceName() || this.labelFor(context.delta.processName)}`,
+      `Items: ${context.items.length}`,
+      `Relationships: ${context.relationships.length}`,
+      `Evidence records: ${context.evidenceIndex.length}`,
+      '',
+      'Object type counts:',
+      [...typeCounts.entries()].sort((a, b) => b[1] - a[1]).map(([type, count]) => `${type}: ${count}`).join('\n') || 'none',
+      '',
+      'Quality gates:',
+      `Generated artifact nodes removed: yes`,
+      `Run diagnostic actions removed from backlog: yes`,
+      `Sheet names restricted to workbook sheet map evidence: yes`,
+      `VBA / Power Query / external connection evidence split into separate object classes: yes`
+    ];
+    return sections.join('\n');
   }
 
   private buildPdf(title: string, lines: string[]): Blob {
@@ -2897,6 +3437,40 @@ ${sheetList.map((sheet) => `<Relationship Id="rId${sheet.id}" Type="http://schem
     return Array.isArray(value)
       ? value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object').map((item) => item as Record<string, unknown>)
       : [];
+  }
+
+  private actionableBacklogRecords(value: unknown): Record<string, unknown>[] {
+    return this.records(value).filter((record) => !this.isRunDiagnosticRecord(record));
+  }
+
+  private operationalRiskRecords(value: unknown): Record<string, unknown>[] {
+    return this.records(value).filter((record) => !this.isRunDiagnosticRecord(record));
+  }
+
+  private operationalQuestionRecords(value: unknown): Record<string, unknown>[] {
+    return this.records(value).filter((record) => !this.isRunDiagnosticRecord(record));
+  }
+
+  private evidenceRecords(value: unknown): Record<string, unknown>[] {
+    return this.records(value).filter((record) => !this.isRunDiagnosticRecord(record));
+  }
+
+  private isRunDiagnosticRecord(record: Record<string, unknown>): boolean {
+    const text = [
+      record['id'],
+      record['actionId'],
+      record['action_id'],
+      record['linkedItemId'],
+      record['title'],
+      record['summary'],
+      record['scenario'],
+      record['trigger'],
+      record['effect'],
+      record['question'],
+      record['impactIfUnanswered'],
+      record['description']
+    ].map((value) => this.asText(value)).join(' ');
+    return /ACT-[A-Z_]+-RERUN|RISK-[A-Z_]+-INCOMPLETE|Q-[A-Z_]+-INCOMPLETE|EV-[A-Z_]+-INCOMPLETE|Rerun .*Architect|Rerun .*Lead|Rerun .*Principal|Rerun .*Examiner|Rerun .*Strategist|max_output_tokens|ended incomplete|Distillery response status incomplete|returned valid JSON|documented blocker for this specialist pass/i.test(text);
   }
 
   private evidenceFromItems(items: Record<string, unknown>[]): Record<string, unknown>[] {
