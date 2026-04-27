@@ -898,7 +898,10 @@ function buildSourceEvidenceDelta(payload = {}) {
   const metadataPaths = uniqueMatches(extractedText, /\b(xl\/(?:connections|queryTables|queries|pivotTables|pivotCache|externalLinks|customXml|customData|tables|slicers)\/[^\s:]+)\b/gi, 35);
   const connectionEvidence = uniqueMatches(extractedText, /^Connection\s+\d+:\s*([^\n\r]+)/gmi, 20);
   const powerQueryEvidence = uniqueMatches(extractedText, /^Power Query candidate\s+\d+:\s*([^\n\r]+)/gmi, 20);
-  const externalLinkEvidence = uniqueMatches(extractedText, /^External link\s+\d+:\s*([^\n\r]+)/gmi, 20);
+  const externalLinkEvidence = [
+    ...uniqueMatches(extractedText, /^External link\s+\d+:\s*([^\n\r]+)/gmi, 20),
+    ...uniqueMatches(extractedText, /^External URL reference\s+\d+:\s*([^\n\r]+)/gmi, 30)
+  ].slice(0, 30);
   const queryTableEvidence = uniqueMatches(extractedText, /^Query table for\s+[^:]+:\s*([^\n\r]+)/gmi, 20);
   const vbaProcedures = extractListAfter(extractedText, /VBA procedures:\s*([^\n\r]+)/i, 40).filter((value) => !/^none recovered|not detected|unknown$/i.test(value));
   const definedNames = extractListAfter(extractedText, /Defined names:\s*([^\n\r]+)/i, 40);
@@ -1112,6 +1115,86 @@ function buildSourceEvidenceDelta(payload = {}) {
     reportSection('Recursive Lineage and Source-of-Truth Assessment', `Lineage starts at ${sourceName}, proceeds through extracted workbook inventory, sheets, metadata, and formula blocks, and currently terminates at inferred output candidates until external connections, source extracts, named ranges, and owner-confirmed outputs are supplied.`, 76, [evidenceId])
   ];
 
+  const backlog = [
+    {
+      actionId: 'ACT-SOURCE-METADATA-EXPORT',
+      title: `Export native metadata for ${sourceName}`,
+      mode: 'stabilize',
+      owner: 'Source owner',
+      priority: 'P0',
+      dependency: sourceName,
+      acceptanceCriteria: 'Workbook sheets, tables, named ranges, formulas with addresses, Power Query, VBA, pivots, external links, refresh order, sample outputs, owner, SLA, and control evidence are attached to the discovery run.',
+      linkedItemId: 'SRC-001',
+      summary: 'Complete source metadata is required to move from inferred workbook discovery to migration-grade lineage.'
+    },
+    ...(externalLinkNodes.length ? [{
+      actionId: 'ACT-EXTERNAL-REFERENCE-CATALOG',
+      title: 'Catalog every external URL, workbook link, and source reference',
+      mode: 'govern',
+      owner: 'Source owner',
+      priority: 'P0',
+      dependency: externalLinkNodes.map((node) => node.id).join(', '),
+      acceptanceCriteria: 'Each external reference has owner, source system, credential/access path, refresh cadence, business purpose, authoritative-source decision, and migration treatment.',
+      linkedItemId: externalLinkNodes[0].id,
+      summary: 'External references are upstream lineage nodes, not incidental text; they must be classified before engineering rebuild.'
+    }] : []),
+    ...(connectionNodes.length || queryTableNodes.length ? [{
+      actionId: 'ACT-CONNECTION-QUERY-TRACE',
+      title: 'Trace workbook connections and query tables to terminal sources',
+      mode: 'migrate',
+      owner: 'Data engineering',
+      priority: 'P0',
+      dependency: [...connectionNodes, ...queryTableNodes].map((node) => node.id).slice(0, 8).join(', '),
+      acceptanceCriteria: 'Every connection/query table has source, command/query text, destination range/table, refresh behavior, credentials owner, and downstream outputs mapped.',
+      linkedItemId: connectionNodes[0]?.id || queryTableNodes[0]?.id || 'SRC-001',
+      summary: 'Connection lineage drives Fivetran ingestion scope, dbt source definitions, Snowpark exception handling, and acceptance tests.'
+    }] : []),
+    ...(powerQueryNodes.length ? [{
+      actionId: 'ACT-POWER-QUERY-DECOMPILE',
+      title: 'Extract and rebuild Power Query logic',
+      mode: 'rebuild',
+      owner: 'Analytics engineering',
+      priority: 'P0',
+      dependency: powerQueryNodes.map((node) => node.id).slice(0, 8).join(', '),
+      acceptanceCriteria: 'Full M code, parameters, source queries, joins, type conversions, refresh order, and output targets are documented and translated into dbt/Snowpark tests.',
+      linkedItemId: powerQueryNodes[0].id,
+      summary: 'Power Query steps are transformation logic and must be treated as production code.'
+    }] : []),
+    ...(vbaNodes.length ? [{
+      actionId: 'ACT-VBA-MACRO-CALLGRAPH',
+      title: 'Export VBA modules and build macro call graph',
+      mode: 'rebuild',
+      owner: 'Application owner',
+      priority: 'P0',
+      dependency: 'VBA-001',
+      acceptanceCriteria: 'All modules, procedures, workbook/worksheet events, button bindings, references, file IO, refresh calls, error handlers, and generated outputs are captured with evidence IDs.',
+      linkedItemId: 'VBA-001',
+      summary: 'Macro code can orchestrate refresh, mutate data, produce files, and hide business rules; migration cannot be signed off without the call graph.'
+    }] : []),
+    ...(formulaNodes.length || definedNameNodes.length ? [{
+      actionId: 'ACT-FORMULA-NAMED-RANGE-MAP',
+      title: 'Map formulas, named ranges, precedents, and output cells',
+      mode: 'rebuild',
+      owner: 'Analytics engineering',
+      priority: 'P1',
+      dependency: [...formulaNodes, ...definedNameNodes].map((node) => node.id).slice(0, 10).join(', '),
+      acceptanceCriteria: 'Formula blocks and named ranges have cell addresses, source precedents, downstream dependents, business meaning, expected values, and dbt/Snowpark rebuild recommendations.',
+      linkedItemId: formulaNodes[0]?.id || definedNameNodes[0]?.id || 'INV-001',
+      summary: 'Workbook calculations need source-controlled equivalent logic and reconciliation tests.'
+    }] : []),
+    {
+      actionId: 'ACT-OUTPUT-OWNER-SLA-SIGNOFF',
+      title: 'Confirm business outputs, owners, SLA, and failure impact',
+      mode: 'govern',
+      owner: 'Process owner',
+      priority: 'P1',
+      dependency: outputNodes.map((node) => node.id).join(', ') || 'SRC-001',
+      acceptanceCriteria: 'Every critical output has owner, audience, cadence, SLA window, downstream decision/process, failure mode, recovery method, and low/base/high exposure assumptions.',
+      linkedItemId: outputNodes[0]?.id || 'SRC-001',
+      summary: 'Engineering actionability requires confirmed outputs and business consequences, not just workbook object inventory.'
+    }
+  ];
+
   return {
     processName: sourceName,
     businessFunction: `${sourceKindLabel(sourceKind)} discovery and migration readiness`,
@@ -1126,19 +1209,7 @@ function buildSourceEvidenceDelta(payload = {}) {
     items,
     relationships,
     artifacts: [],
-    backlog: [
-      {
-        actionId: 'ACT-SOURCE-METADATA-EXPORT',
-        title: `Export native metadata for ${sourceName}`,
-        mode: 'stabilize',
-        owner: 'Source owner',
-        priority: 'P0',
-        dependency: sourceName,
-        acceptanceCriteria: 'Workbook sheets, tables, named ranges, formulas with addresses, Power Query, VBA, pivots, external links, refresh order, sample outputs, owner, SLA, and control evidence are attached to the discovery run.',
-        linkedItemId: 'SRC-001',
-        summary: 'Complete source metadata is required to move from inferred workbook discovery to migration-grade lineage.'
-      }
-    ],
+    backlog,
     evidenceIndex: [
       {
         id: evidenceId,
@@ -1182,6 +1253,48 @@ function buildSourceEvidenceDelta(payload = {}) {
         object_type: 'formula_block',
         object_name: node.name,
         formula_ref: worksheetMatches[index]?.formulas?.slice(0, 500) || '',
+        evidence_id: evidenceId
+      })),
+      ...connectionNodes.map((node) => ({
+        object_id: node.id,
+        workbook_id: 'SRC-001',
+        object_type: 'external_connection',
+        object_name: node.name,
+        evidence_id: evidenceId
+      })),
+      ...externalLinkNodes.map((node) => ({
+        object_id: node.id,
+        workbook_id: 'SRC-001',
+        object_type: 'external_link',
+        object_name: node.name,
+        evidence_id: evidenceId
+      })),
+      ...powerQueryNodes.map((node) => ({
+        object_id: node.id,
+        workbook_id: 'SRC-001',
+        object_type: 'power_query',
+        object_name: node.name,
+        evidence_id: evidenceId
+      })),
+      ...queryTableNodes.map((node) => ({
+        object_id: node.id,
+        workbook_id: 'SRC-001',
+        object_type: 'query_table',
+        object_name: node.name,
+        evidence_id: evidenceId
+      })),
+      ...vbaNodes.map((node) => ({
+        object_id: node.id,
+        workbook_id: 'SRC-001',
+        object_type: node.type,
+        object_name: node.name,
+        evidence_id: evidenceId
+      })),
+      ...definedNameNodes.map((node) => ({
+        object_id: node.id,
+        workbook_id: 'SRC-001',
+        object_type: 'named_range',
+        object_name: node.name,
         evidence_id: evidenceId
       }))
     ],
@@ -1310,7 +1423,8 @@ function deriveCriticalOutputs(payload, sourceName, sheetNames, recoveredTerms) 
 }
 
 function isGeneratedArtifactName(value) {
-  return /executive_decision_brief|current_state_architecture_report|technical_discovery_workbook|auto_documentation_pack|diagram_pack|financial_impact_model|action_backlog|evidence_archive|metadata_manifest|discovery_action_pack/i.test(String(value || ''));
+  const normalized = String(value || '').replace(/\s+/g, '_').toLowerCase();
+  return /executive_decision_brief|current_state_architecture_report|technical_discovery_workbook|auto_documentation_pack|diagram_pack|financial_impact_model|action_backlog|evidence_archive|metadata_manifest|discovery_action_pack/i.test(normalized);
 }
 
 function extractListAfter(text, regex, limit) {

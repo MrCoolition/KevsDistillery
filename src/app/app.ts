@@ -1156,8 +1156,12 @@ export class App {
     }
 
     const sharedStrings = await zip.file('xl/sharedStrings.xml')?.async('text');
+    const sharedStringValues = this.xlsxSharedStrings(sharedStrings);
     if (sharedStrings) {
-      parts.push(`Shared strings sample: ${this.cleanXmlText(sharedStrings).slice(0, 12000)}`);
+      const usefulStrings = sharedStringValues
+        .filter((value) => /https?:\/\/|\\\\|[A-Za-z0-9_.-]+\.[A-Za-z]{2,}|[A-Za-z_][A-Za-z0-9_ ]{3,}/.test(value))
+        .slice(0, 160);
+      parts.push(`Shared strings sample: ${usefulStrings.join(' | ').slice(0, 12000) || this.cleanXmlText(sharedStrings).slice(0, 4000)}`);
     }
 
     const worksheetPaths = sheets.length
@@ -1172,6 +1176,7 @@ export class App {
       const sheet = sheetByPath.get(path.toLowerCase());
       const sheetName = sheet?.name || path.replace(/^.*\//, '').replace(/\.xml$/i, '');
       const formulas = this.xlsxWorksheetFormulas(xml).slice(0, 300);
+      const cellValues = this.xlsxWorksheetCells(xml, sharedStringValues).slice(0, 160);
       const dimensions = xml.match(/<dimension ref="([^"]+)"/)?.[1] || 'unknown';
       const sheetRelationships = await this.xlsxRelationships(zip, `xl/worksheets/_rels/${path.replace(/^.*\//, '')}.rels`, 'xl/worksheets');
       const relationshipSummary = [...sheetRelationships.values()]
@@ -1179,7 +1184,7 @@ export class App {
         .map((relationship) => `${this.xlsxRelationshipKind(relationship.type)} -> ${relationship.path || relationship.target}`)
         .slice(0, 16);
       const hyperlinks = this.xlsxWorksheetHyperlinks(xml, sheetRelationships).slice(0, 20);
-      parts.push(`Worksheet ${sheetName} (${path}): dimension ${dimensions}; formulas: ${formulas.join(' | ') || 'none detected'}; hyperlinks: ${hyperlinks.join(' | ') || 'none detected'}; relationships: ${relationshipSummary.join(' | ') || 'none detected'}`);
+      parts.push(`Worksheet ${sheetName} (${path}): dimension ${dimensions}; formulas: ${formulas.join(' | ') || 'none detected'}; hyperlinks: ${hyperlinks.join(' | ') || 'none detected'}; values: ${cellValues.join(' | ') || 'none detected'}; relationships: ${relationshipSummary.join(' | ') || 'none detected'}`);
 
       const queryTableRelationships = [...sheetRelationships.values()].filter((relationship) => /queryTable/i.test(relationship.type));
       for (const relationship of queryTableRelationships.slice(0, 10)) {
@@ -1205,6 +1210,12 @@ export class App {
           parts.push(`${path}: ${this.cleanXmlText(text).slice(0, 10000)}`);
         }
       }
+    }
+
+    const externalUrlReferences = this.extractUrlReferences(parts.join('\n')).slice(0, 80);
+    if (externalUrlReferences.length) {
+      parts.push(`External URL references: ${externalUrlReferences.length} detected`);
+      parts.push(...externalUrlReferences.map((url, index) => `External URL reference ${index + 1}: ${url}`));
     }
 
     return parts.join('\n\n');
@@ -1297,6 +1308,15 @@ export class App {
       .map((reference) => this.xmlAttr(reference, 'id'))
       .filter(Boolean)
       .slice(0, 30);
+  }
+
+  private xlsxSharedStrings(sharedStringsXml: string | undefined): string[] {
+    const document = this.parseXml(sharedStringsXml);
+    return this.xmlElements(document, 'si')
+      .map((item) => this.xmlText(item))
+      .map((value) => this.cleanDisplayText(value))
+      .filter(Boolean)
+      .slice(0, 2000);
   }
 
   private async xlsxConnections(zip: any): Promise<string[]> {
@@ -1396,6 +1416,38 @@ export class App {
     return [...xml.matchAll(/<f\b[^>]*>([\s\S]*?)<\/f>/g)]
       .map((match) => this.decodeXmlEntities(match[1]).replace(/\s+/g, ' ').trim())
       .filter(Boolean);
+  }
+
+  private xlsxWorksheetCells(xml: string, sharedStrings: string[]): string[] {
+    const cells: string[] = [];
+    const cellMatches = [...xml.matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>/gi)];
+    for (const match of cellMatches) {
+      const attributes = match[1];
+      const body = match[2];
+      const ref = attributes.match(/\br="([^"]+)"/i)?.[1] || '';
+      const type = attributes.match(/\bt="([^"]+)"/i)?.[1] || '';
+      const inlineText = body.match(/<is\b[\s\S]*?<t\b[^>]*>([\s\S]*?)<\/t>[\s\S]*?<\/is>/i)?.[1] || '';
+      const rawValue = body.match(/<v\b[^>]*>([\s\S]*?)<\/v>/i)?.[1] || '';
+      const formula = body.match(/<f\b[^>]*>([\s\S]*?)<\/f>/i)?.[1] || '';
+      let value = '';
+      if (inlineText) {
+        value = this.decodeXmlEntities(inlineText);
+      } else if (type === 's' && rawValue && sharedStrings[Number(rawValue)] !== undefined) {
+        value = sharedStrings[Number(rawValue)];
+      } else if (rawValue) {
+        value = this.decodeXmlEntities(rawValue);
+      } else if (formula) {
+        value = `formula:${this.decodeXmlEntities(formula)}`;
+      }
+      const cleaned = this.cleanDisplayText(value);
+      if (ref && cleaned && /https?:\/\/|\\\\|[A-Za-z0-9_.-]+\.[A-Za-z]{2,}|[A-Za-z]/.test(cleaned)) {
+        cells.push(`${ref}=${cleaned.slice(0, 360)}`);
+      }
+      if (cells.length >= 220) {
+        break;
+      }
+    }
+    return cells;
   }
 
   private xlsxWorksheetHyperlinks(xml: string, relationships: Map<string, { target: string; path: string; targetMode: string }>): string[] {
@@ -1499,6 +1551,13 @@ export class App {
     keep(asciiRun);
     keep(utf16Run);
     return this.uniqueValues([...strings], limit);
+  }
+
+  private extractUrlReferences(value: string): string[] {
+    return this.uniqueValues(
+      [...value.matchAll(/\bhttps?:\/\/[^\s"'<>|)]+/gi)].map((match) => match[0].replace(/[.,;]+$/g, '')),
+      120
+    );
   }
 
   private uniqueValues(values: string[], limit: number): string[] {
@@ -2512,7 +2571,10 @@ export class App {
     const metadataPaths = this.uniqueRegexMatches(evidence, /\b(xl\/(?:connections|queryTables|queries|pivotTables|pivotCache|externalLinks|customXml|customData|tables|slicers)\/[^\s:]+)\b/gi, 10);
     const connectionTexts = this.uniqueRegexMatches(evidence, /^Connection\s+\d+:\s*([^\n\r]+)/gmi, 10);
     const powerQueryTexts = this.uniqueRegexMatches(evidence, /^Power Query candidate\s+\d+:\s*([^\n\r]+)/gmi, 10);
-    const externalLinkTexts = this.uniqueRegexMatches(evidence, /^External link\s+\d+:\s*([^\n\r]+)/gmi, 10);
+    const externalLinkTexts = [
+      ...this.uniqueRegexMatches(evidence, /^External link\s+\d+:\s*([^\n\r]+)/gmi, 10),
+      ...this.uniqueRegexMatches(evidence, /^External URL reference\s+\d+:\s*([^\n\r]+)/gmi, 20)
+    ].slice(0, 20);
     const queryTableTexts = this.uniqueRegexMatches(evidence, /^Query table for\s+[^:]+:\s*([^\n\r]+)/gmi, 10);
     const vbaProcedures = this.extractEvidenceList(evidence, /VBA procedures:\s*([^\n\r]+)/i, 16);
     const definedNames = this.extractEvidenceList(evidence, /Defined names:\s*([^\n\r]+)/i, 16);
@@ -2788,7 +2850,7 @@ export class App {
       const color = this.diagramTone(edge.tone).stroke;
       const labelX = (points.x1 + points.x2) / 2;
       const labelY = (points.y1 + points.y2) / 2 - 8;
-      const label = scene.edges.length <= 12 ? `<text x="${labelX}" y="${labelY}" text-anchor="middle">${this.escapeXml(edge.label)}</text>` : '';
+      const label = scene.spec.kind !== 'dependency' && scene.edges.length <= 9 ? `<text x="${labelX}" y="${labelY}" text-anchor="middle">${this.escapeXml(edge.label)}</text>` : '';
       return `<g class="edge"><line x1="${points.x1}" y1="${points.y1}" x2="${points.x2}" y2="${points.y2}" stroke="${color}" stroke-width="2.6" marker-end="url(#arrow)"/>${label}</g>`;
     }).join('');
     const lanes = scene.lanes.map((lane) => `<g class="lane"><rect x="${lane.x}" y="${lane.y}" width="${lane.w}" height="${lane.h}" rx="18"/><text x="${lane.x + 22}" y="${lane.y + 30}">${this.escapeXml(lane.label)}</text></g>`).join('');
@@ -2930,7 +2992,7 @@ export class App {
         [points.x2 - Math.cos(angle - 0.45) * arrow, points.y2 - Math.sin(angle - 0.45) * arrow],
         [points.x2 - Math.cos(angle + 0.45) * arrow, points.y2 - Math.sin(angle + 0.45) * arrow]
       ], tone.stroke);
-      if (scene.edges.length <= 12) {
+      if (scene.spec.kind !== 'dependency' && scene.edges.length <= 9) {
         wrappedText((points.x1 + points.x2) / 2 - 55, (points.y1 + points.y2) / 2 - 10, edge.label, 110, 10, 'F2', '#f3d5a8', 1);
       }
     }
@@ -3706,8 +3768,20 @@ ${sheetList.map((sheet) => `<Relationship Id="rId${sheet.id}" Type="http://schem
     const lines: string[] = [];
     let current = '';
     for (const word of words) {
+      if (word.length > width) {
+        if (current) {
+          lines.push(current);
+          current = '';
+        }
+        for (let index = 0; index < word.length; index += Math.max(4, width - 1)) {
+          lines.push(word.slice(index, index + Math.max(4, width - 1)));
+        }
+        continue;
+      }
       if (`${current} ${word}`.trim().length > width) {
-        lines.push(current);
+        if (current) {
+          lines.push(current);
+        }
         current = word;
       } else {
         current = `${current} ${word}`.trim();
