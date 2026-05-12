@@ -1,773 +1,323 @@
-<main class="app-shell">
-  <header class="topbar">
-    <a class="brand" href="#top" aria-label="Uncle Kev's Distillery home">
-      <span class="brand-mark">
-        <img src="/assets/uncle-kevs-distillery.png" alt="">
-      </span>
-      <span>
-        <strong>UNCLE KEV'S DISTILLERY</strong>
-        <em>Proof-grade data discovery</em>
-      </span>
-    </a>
-
-    <nav class="nav-tabs" aria-label="Workspace sections">
-      @for (item of navItems; track item.id) {
-        <button
-          type="button"
-          [class.active]="activeView() === item.id"
-          (click)="selectView(item.id)"
-        >
-          {{ item.label }}
-        </button>
-      }
-    </nav>
-
-    <div class="top-actions">
-      <button type="button" class="icon-action" aria-label="Run ingestion" (click)="selectView('imports')">
-        <span aria-hidden="true">+</span>
-        Mash In
-      </button>
-      <button
-        type="button"
-        class="primary-action"
-        aria-label="Generate action pack"
-        [disabled]="isSynthesizing() || isGeneratingPack()"
-        (click)="generateActionPack()"
-      >
-        {{ isGeneratingPack() ? 'Packaging...' : 'Generate Action Pack' }}
-      </button>
-    </div>
-  </header>
-
-  <section class="hero-band" id="top">
-    <div class="hero-copy">
-      <img class="hero-logo" src="/assets/uncle-kevs-distillery.png" alt="Uncle Kev's Distillery">
-      <p class="eyebrow">Small batch lineage. Barrel strength evidence.</p>
-      <h1>Data discovery, distilled.</h1>
-      <p class="hero-text">Browse files or folders, run The Distillery, and generate a discovery action pack engineers can actually use.</p>
-      <div class="hero-meta" aria-label="Executive summary">
-        <span>{{ model.businessFunction }}</span>
-        <span>{{ model.criticalOutputs.length }} critical outputs</span>
-        <span>Proofed for Snowflake migration</span>
+<main class="shell">
+  <section class="workspace">
+    <div class="masthead">
+      <div class="brand-visual" aria-label="Data Drill Premium Data Solutions">
+        <img src="/drill.png" alt="Data Drill Premium Data Solutions" />
       </div>
-    </div>
 
-    <aside class="ai-panel" aria-label="Distillery orchestration">
-      <div>
-        <span class="tiny-label">Copper still</span>
-        <strong>{{ ai.model }}</strong>
-      </div>
-      <p>{{ ai.serverBoundary }}</p>
-      <div class="ai-steps">
-        @for (output of ai.contract.requiredOutputs; track output) {
-          <span>{{ output }}</span>
-        }
-      </div>
-    </aside>
-  </section>
-
-  <section class="metric-grid" aria-label="Discovery health">
-    <article>
-      <span>Heat</span>
-      <strong>{{ model.overallRiskRating }}</strong>
-      <small>failure modes proofed</small>
-    </article>
-    <article>
-      <span>Proof Points</span>
-      <strong>{{ completeItems() }}/{{ model.items.length }}</strong>
-      <small>canonical items finished</small>
-    </article>
-    <article>
-      <span>Confidence</span>
-      <strong>{{ averageConfidence() }}%</strong>
-      <small>weighted discovery signal</small>
-    </article>
-    <article>
-      <span>Action Pack</span>
-      <strong>{{ packageProgress() }}%</strong>
-      <small>graph-generated artifacts</small>
-    </article>
-  </section>
-
-  <div class="workspace-grid">
-    <aside class="left-rail" aria-label="Discovery intake">
-      <section class="rail-section">
-        <p class="section-kicker">Mash bill</p>
-        <h2>Raw sources</h2>
-        <div class="source-list">
-          @for (source of model.systemsInScope; track source) {
-            <button type="button">{{ source }}</button>
-          }
-        </div>
-      </section>
-
-      <section class="rail-section">
-        <p class="section-kicker">Quality gates</p>
-        <div class="gate-list">
-          <span>Evidence</span>
-          <span>Confidence</span>
-          <span>Next action</span>
-          <span>Lineage</span>
-          <span>Impact estimate</span>
-          <span>Owner</span>
-        </div>
-      </section>
-
-      <section class="rail-section">
-        <p class="section-kicker">Still house</p>
-        @for (capability of model.extractionCapabilities; track capability.source) {
-          <div class="extractor">
-            <div>
-              <strong>{{ capability.source }}</strong>
-              <span>{{ capability.autoExtracts.length }} extractors</span>
-            </div>
-            <meter min="0" max="100" [value]="capability.readiness"></meter>
-          </div>
-        }
-      </section>
-    </aside>
-
-    <section class="content-surface">
-      @switch (activeView()) {
-        @case ('command') {
-          <section class="view-stack">
-            <div class="split-panel">
-              <article class="decision-panel">
-                <p class="section-kicker">Executive snapshot</p>
-                <h2>Decision brief</h2>
-                <dl class="brief-list">
-                  <div>
-                    <dt>Process</dt>
-                    <dd>{{ model.processName }}</dd>
-                  </div>
-                  <div>
-                    <dt>Decision</dt>
-                    <dd>{{ model.decisionRequired }}</dd>
-                  </div>
-                  <div>
-                    <dt>Impact model</dt>
-                    <dd>
-                      Scenario-based after execution
-                    </dd>
-                  </div>
-                </dl>
-              </article>
-
-              <article class="risk-panel">
-                <p class="section-kicker">Top failure risks</p>
-                @for (risk of model.failureRisks; track risk.id) {
-                  <button type="button" class="risk-row">
-                    <span>{{ risk.id }}</span>
-                    <strong>{{ risk.scenario }}</strong>
-                    <em>{{ risk.confidence }}% confidence</em>
-                  </button>
-                }
-              </article>
-            </div>
-
-            <section class="confidence-strip" aria-label="Scope coverage and confidence">
-              @for (area of model.confidenceAreas; track area.area) {
-                <article>
-                  <div>
-                    <span>{{ area.area }}</span>
-                    <strong>{{ area.confidence }}%</strong>
-                  </div>
-                  <meter min="0" max="100" [value]="area.coverage"></meter>
-                  <p>{{ area.blocked }}</p>
-                </article>
-              }
-            </section>
-
-            <section class="narrative-panel">
-              <p class="section-kicker">Generated current state</p>
-              <h2>Operating model narrative</h2>
-              <p>
-                Choose files or a folder, load the mash bill, then run analysis. Uncle Kev's
-                Distillery extracts readable evidence, builds canonical nodes and edges, traces lineage,
-                documents controls and blockers, scores confidence, and generates the action pack from one model.
-              </p>
-            </section>
-          </section>
-        }
-
-        @case ('imports') {
-          <section class="import-workbench">
-            <div class="import-head">
-              <div>
-                <p class="section-kicker">Mash tun</p>
-                <h2>Turn raw sources into migration proof</h2>
-              </div>
-              <div class="status-cluster">
-                <span [class.ready]="distilleryReady(apiHealth())">Distillery</span>
-                <span [class.ready]="workspaceReady(apiHealth())">Workspace</span>
-              </div>
-            </div>
-
-            <section class="source-type-grid" aria-label="Import source types">
-              @for (source of importSources; track source.kind) {
-                <button
-                  type="button"
-                  [class.selected]="importSourceKind() === source.kind"
-                  (click)="updateImportSourceKind(source.kind)"
-                >
-                  <span>{{ source.label }}</span>
-                  <strong>{{ source.kind }}</strong>
-                  <em>{{ source.description }}</em>
-                </button>
-              }
-            </section>
-
-            <section class="source-browser">
-              <article class="browse-panel">
-                <p class="section-kicker">Source intake</p>
-                <h2>Browse real files or folders</h2>
-                <p>
-                  Choose source files from your machine. Uncle Kev's Distillery extracts readable evidence locally,
-                  stages the source set, then sends extracted evidence to the copper still when you execute.
-                </p>
-                <div class="browse-actions">
-                  <button type="button" class="primary-action" (click)="fileInput.click()">Choose Files</button>
-                  <button type="button" class="icon-action" (click)="folderInput.click()">
-                    <span aria-hidden="true">+</span>
-                    Choose Folder
-                  </button>
-                  <button type="button" class="icon-action" (click)="clearSources(fileInput, folderInput)">
-                    <span aria-hidden="true">x</span>
-                    Clear
-                  </button>
-                </div>
-                <input #fileInput type="file" multiple hidden (change)="stageFiles($any($event.target).files)">
-                <input #folderInput type="file" webkitdirectory directory multiple hidden (change)="stageFiles($any($event.target).files)">
-                <div class="source-stats">
-                  <span><strong>{{ sourceStats().files }}</strong>Files</span>
-                  <span><strong>{{ sourceStats().bytes }}</strong>Size</span>
-                  <span><strong>{{ sourceStats().readable }}</strong>Readable</span>
-                  <span><strong>{{ sourceStats().evidenceChars }}</strong>Evidence chars</span>
-                </div>
-              </article>
-
-              <article class="staged-panel">
-                <p class="section-kicker">Staged sources</p>
-                <div class="source-table">
-                  @if (isExtractingSources() && stagedSources().length === 0) {
-                    <div class="source-row">
-                      <strong>Extracting files...</strong>
-                      <span>running</span>
-                      <em>0 KB</em>
-                    </div>
-                  } @else {
-                    @for (source of stagedSources(); track source.path) {
-                      <div class="source-row">
-                        <strong [title]="source.path">{{ source.path }}</strong>
-                        <span>{{ source.status }}</span>
-                        <em>{{ source.size }} bytes</em>
-                      </div>
-                    } @empty {
-                      <div class="source-row">
-                        <strong>No files selected</strong>
-                        <span>waiting</span>
-                        <em>0 KB</em>
-                      </div>
-                    }
-                  }
-                </div>
-              </article>
-            </section>
-
-            <section class="import-console">
-              <article class="evidence-editor">
-                <div class="field-grid">
-                  <label>
-                    Batch name
-                    <input
-                      type="text"
-                      [value]="importSourceName()"
-                      (input)="importSourceName.set($any($event.target).value)"
-                    >
-                  </label>
-                </div>
-
-                <label>
-                  Known artifacts
-                  <textarea
-                    rows="4"
-                    [value]="knownArtifactsText()"
-                    (input)="knownArtifactsText.set($any($event.target).value)"
-                  ></textarea>
-                </label>
-
-                <label>
-                  Target outputs
-                  <textarea
-                    rows="4"
-                    [value]="targetOutputsText()"
-                    (input)="targetOutputsText.set($any($event.target).value)"
-                  ></textarea>
-                </label>
-
-                <label>
-                  Evidence payload
-                  <textarea
-                    class="evidence-payload"
-                    rows="12"
-                    [value]="extractedText()"
-                    (input)="extractedText.set($any($event.target).value)"
-                  ></textarea>
-                </label>
-
-                <div class="import-actions">
-                  <button type="button" class="primary-action" [disabled]="isSynthesizing() || analysisConfirmOpen()" (click)="runSynthesis()">
-                    {{ isSynthesizing() ? 'Analyzing...' : 'Run Analysis' }}
-                  </button>
-                  <button type="button" class="icon-action" (click)="refreshProductionState()">
-                    Refresh Status
-                  </button>
-                </div>
-
-                <section
-                  class="run-result"
-                  [class.running]="isSynthesizing()"
-                  [class.warning]="limitedExtraction()"
-                  [class.success]="synthesisResult()"
-                >
-                  <strong>Still status</strong>
-                  <p>{{ runStatus() }}</p>
-                  @if (apiHealth(); as health) {
-                    <small>
-                      Distillery {{ distilleryReady(health) ? 'ready' : 'not ready' }}.
-                      Workspace {{ workspaceStatusText(health) }}.
-                    </small>
-                  }
-                </section>
-
-                @if (synthesisError()) {
-                  <p class="error-line">{{ synthesisError() }}</p>
-                }
-                @if (packMessage()) {
-                  <p class="success-line">{{ packMessage() }}</p>
-                }
-                @if (lastDownload(); as download) {
-                  <a class="download-ready" [href]="download.url" [attr.download]="download.filename">
-                    Download {{ download.filename }}
-                  </a>
-                }
-                @if (packError()) {
-                  <p class="error-line">{{ packError() }}</p>
-                }
-              </article>
-
-              <aside class="import-side">
-                <section>
-                  <p class="section-kicker">Still status</p>
-                  @if (apiHealth(); as health) {
-                    <dl class="status-list">
-                      <div>
-                        <dt>Engine</dt>
-                        <dd>The Distillery</dd>
-                      </div>
-                      <div>
-                        <dt>Distillery</dt>
-                        <dd>{{ distilleryReady(health) ? 'ready' : 'not ready' }}</dd>
-                      </div>
-                      <div>
-                        <dt>Workspace</dt>
-                        <dd>{{ workspaceStatusText(health) }}</dd>
-                      </div>
-                    </dl>
-                    <button type="button" class="schema-button" (click)="verifyWorkspace()">
-                      Verify Workspace
-                    </button>
-                  } @else {
-                    <p>{{ apiError() || 'Checking API health...' }}</p>
-                  }
-                  @if (apiError()) {
-                    <p class="error-line">{{ apiError() }}</p>
-                  }
-                </section>
-
-                <section>
-                  <p class="section-kicker">Recent batches</p>
-                  <div class="run-list">
-                    @for (run of historicalRuns(); track run.id) {
-                      <button type="button">
-                        <strong>{{ run.source_name }}</strong>
-                        <span>{{ run.source_kind }}  -  {{ run.item_count }} items  -  {{ run.backlog_count }} actions</span>
-                      </button>
-                    } @empty {
-                      <p>No persisted runs yet.</p>
-                    }
-                  </div>
-                </section>
-              </aside>
-            </section>
-          </section>
-        }
-
-        @case ('model') {
-          <section class="view-stack">
-            <div class="search-row">
-              <label for="model-search">Canonical model</label>
-              <input
-                id="model-search"
-                type="search"
-                placeholder="Search items, owners, tags"
-                [value]="searchTerm()"
-                (input)="updateSearch($any($event.target).value)"
-              >
-            </div>
-
-            <div class="item-grid">
-              @for (item of filteredItems(); track item.id) {
-                <button
-                  type="button"
-                  class="item-card"
-                  [class.selected]="selectedItemId() === item.id"
-                  (click)="selectItem(item.id)"
-                >
-                  <span class="item-topline">
-                    <em>{{ item.id }}</em>
-                    <mark [class]="item.criticality">{{ item.criticality }}</mark>
-                  </span>
-                  <strong>{{ item.name }}</strong>
-                  <small>{{ item.type }}  -  {{ item.owner }}</small>
-                  <span class="evidence-score">{{ item.confidence }}% confidence</span>
-                </button>
-              }
-            </div>
-
-            <article class="detail-panel">
-              <div class="detail-heading">
-                <span>{{ selectedItem().id }}  -  {{ selectedItem().type }}</span>
-                <h2>{{ selectedItem().name }}</h2>
-              </div>
-              <div class="detail-grid">
-                <div>
-                  <p class="section-kicker">Business purpose</p>
-                  <p>{{ selectedItem().businessPurpose }}</p>
-                </div>
-                <div>
-                  <p class="section-kicker">Failure impact</p>
-                  <p>{{ selectedItem().failureImpact }}</p>
-                </div>
-                <div>
-                  <p class="section-kicker">Recommended action</p>
-                  <p>
-                    <strong>{{ selectedItem().recommendedAction.mode }}</strong>
-                    {{ selectedItem().recommendedAction.summary }}
-                  </p>
-                </div>
-                <div>
-                  <p class="section-kicker">Evidence</p>
-                  @for (evidence of selectedItem().evidence; track evidence.id) {
-                    <span class="evidence-pill">{{ evidence.id }}  -  {{ evidence.type }}</span>
-                  }
-                </div>
-              </div>
-            </article>
-          </section>
-        }
-
-        @case ('lineage') {
-          <section class="lineage-layout">
-            <article class="graph-canvas" aria-label="Recursive lineage graph">
-              @for (item of model.items; track item.id) {
-                <button
-                  type="button"
-                  class="graph-node"
-                  [class.selected]="selectedItemId() === item.id"
-                  [class.critical]="criticalityRank(item.criticality) > 3"
-                  (click)="selectItem(item.id)"
-                >
-                  <span>{{ item.id }}</span>
-                  <strong>{{ item.name }}</strong>
-                  <em>{{ item.type }}</em>
-                </button>
-              }
-            </article>
-
-            <aside class="lineage-side">
-              <p class="section-kicker">Recursive trace</p>
-              <h2>{{ selectedItem().name }}</h2>
-              <div class="trace-list">
-                @for (node of lineageTrace(); track node.id) {
-                  <div>
-                    <span>{{ node.id }}</span>
-                    <strong>{{ node.name }}</strong>
-                    <em>{{ node.status }}  -  {{ node.confidence }}%</em>
-                  </div>
-                }
-              </div>
-
-              <div class="relationship-columns">
-                <section>
-                  <h3>Upstream</h3>
-                  @for (node of selectedUpstream(); track node.id) {
-                    <button type="button" (click)="selectItem(node.id)">{{ node.id }}  -  {{ node.name }}</button>
-                  }
-                </section>
-                <section>
-                  <h3>Downstream</h3>
-                  @for (node of selectedDownstream(); track node.id) {
-                    <button type="button" (click)="selectItem(node.id)">{{ node.id }}  -  {{ node.name }}</button>
-                  }
-                </section>
-              </div>
-            </aside>
-          </section>
-        }
-
-        @case ('impact') {
-          <section class="view-stack">
-            <div class="impact-band">
-              <div>
-                <span>No run</span>
-                <strong>Availability</strong>
-              </div>
-              <div>
-                <span>Wrong data</span>
-                <strong>Quality</strong>
-              </div>
-              <div>
-                <span>Unauditable</span>
-                <strong>Traceability</strong>
-              </div>
-            </div>
-
-            <section class="risk-table" aria-label="Impact scenarios">
-              <div class="table-head">
-                <span>Scenario</span>
-                <span>Output</span>
-                <span>Detection</span>
-                <span>Impact basis</span>
-              </div>
-              @for (risk of model.failureRisks; track risk.id) {
-                <article>
-                  <strong>{{ risk.scenario }}</strong>
-                  <span>{{ risk.impactedOutput }}</span>
-                  <span>{{ risk.detection }}</span>
-                  <em>{{ risk.exposure.assumptions }}</em>
-                </article>
-              }
-            </section>
-          </section>
-        }
-
-        @case ('reports') {
-          <section class="reporting-dashboard">
-            <div class="report-head">
-              <div>
-                <p class="section-kicker">Generated analysis</p>
-                  <h2>Discovery Action Pack</h2>
-                <p>
-                  The Distillery generates the concise report layer, visual diagram PDFs, SVG diagrams, Mermaid
-                  source, lineage, controls, business exposure, artifacts, and the engineering backlog from one model.
-                </p>
-              </div>
-              <button
-                type="button"
-                class="primary-action"
-                [disabled]="isSynthesizing() || isGeneratingPack()"
-                (click)="generateActionPack()"
-              >
-                {{ isGeneratingPack() ? 'Packaging...' : 'Download Discovery Action Pack' }}
-              </button>
-              <div class="report-scoreboard">
-                <span>
-                  <strong>{{ generatedCounts().items }}</strong>
-                  Items
-                </span>
-                <span>
-                  <strong>{{ generatedCounts().relationships }}</strong>
-                  Edges
-                </span>
-                <span>
-                  <strong>{{ generatedCounts().artifacts }}</strong>
-                  Artifacts
-                </span>
-                <span>
-                  <strong>{{ generatedCounts().backlog }}</strong>
-                  Actions
-                </span>
-              </div>
-            </div>
-
-            @if (packMessage()) {
-              <p class="success-line">{{ packMessage() }}</p>
-            }
-            @if (lastDownload(); as download) {
-              <a class="download-ready" [href]="download.url" [attr.download]="download.filename">
-                Download {{ download.filename }}
-              </a>
-            }
-            @if (packError()) {
-              <p class="error-line">{{ packError() }}</p>
-            }
-
-            <section class="report-output">
-              <aside class="pack-tree">
-                <p class="section-kicker">Output package</p>
-                <div>
-                  <strong>/Discovery_Action_Pack/</strong>
-                  @for (artifact of liveArtifacts(); track artifact.id) {
-                    <button
-                      type="button"
-                      class="pack-tree-item"
-                      [disabled]="!synthesisResult() || isGeneratingPack()"
-                      (click)="downloadArtifact(artifact)"
-                    >
-                      {{ artifact.name }}
-                    </button>
-                  }
-                </div>
-              </aside>
-
-              <article class="report-preview">
-                <p class="section-kicker">Report output</p>
-                @for (section of reportSections(); track section.title) {
-                  <section>
-                    <h3>{{ section.title }}</h3>
-                    @if (sectionBodyLines(section.body).length > 1) {
-                      <div class="section-lines">
-                        @for (line of sectionBodyLines(section.body); track $index) {
-                          <span>{{ line }}</span>
-                        }
-                      </div>
-                    } @else {
-                      <p>{{ section.body }}</p>
-                    }
-                    @if (shouldVisualizeSection(section.title)) {
-                      <div class="inline-node-map" aria-label="Visual node map">
-                        <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-                          <defs>
-                            <marker id="inline-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-                              <path d="M 0 0 L 10 5 L 0 10 z"></path>
-                            </marker>
-                          </defs>
-                          @for (edge of reportPreviewEdges(); track edge.id) {
-                            <line
-                              [attr.x1]="edge.x1"
-                              [attr.y1]="edge.y1"
-                              [attr.x2]="edge.x2"
-                              [attr.y2]="edge.y2"
-                              [attr.data-tone]="edge.tone"
-                            ></line>
-                          }
-                        </svg>
-                        @for (node of reportPreviewNodes(); track node.id) {
-                          <article class="inline-node" [attr.data-tone]="node.tone" [style.left.%]="node.x" [style.top.%]="node.y">
-                            <em>{{ node.id }}</em>
-                            <strong>{{ node.label }}</strong>
-                            <span>{{ node.type }}</span>
-                            @if (node.confidence !== null) {
-                              <small>{{ node.confidence }}%</small>
-                            }
-                          </article>
-                        }
-                      </div>
-                    }
-                    @if (section.confidence !== null || section.evidenceIds.length) {
-                      <footer class="section-proof">
-                        @if (section.confidence !== null) {
-                          <span>{{ section.confidence }}% confidence</span>
-                        }
-                        @if (section.evidenceIds.length) {
-                          <span>Evidence {{ section.evidenceIds.join(', ') }}</span>
-                        }
-                      </footer>
-                    }
-                  </section>
-                }
-              </article>
-            </section>
-
-            <div class="pack-grid">
-              @for (artifact of liveArtifacts(); track artifact.id) {
-                <button
-                  type="button"
-                  class="artifact-card"
-                  [disabled]="!synthesisResult() || isGeneratingPack()"
-                  (click)="downloadArtifact(artifact)"
-                  [attr.aria-label]="'Download ' + artifact.name"
-                >
-                  <div>
-                    <span>{{ artifact.id }}</span>
-                    <strong>{{ artifact.name }}</strong>
-                  </div>
-                  <p>{{ artifact.purpose }}</p>
-                  <div class="progress-line" [style.--progress]="artifact.progress + '%'">
-                    <span></span>
-                  </div>
-                  <footer>
-                    <em>{{ synthesisResult() ? 'Click to download' : artifact.audience }}</em>
-                    <strong>{{ artifact.progress }}%</strong>
-                  </footer>
-                  <small class="artifact-action">
-                    {{ synthesisResult() ? 'Download artifact' : 'Run analysis first' }}
-                  </small>
-                </button>
-              }
-            </div>
-          </section>
-        }
-
-        @case ('backlog') {
-          <section class="view-stack">
-            <section class="backlog-list" aria-label="Remediation backlog">
-              @for (action of criticalBacklog(); track action.actionId) {
-                <article>
-                  <div class="action-priority">{{ action.priority }}</div>
-                  <div>
-                    <span>{{ action.actionId }}  -  {{ action.mode }}</span>
-                    <h2>{{ action.title }}</h2>
-                    <p>{{ action.acceptanceCriteria }}</p>
-                  </div>
-                  <aside>
-                    <strong>{{ action.owner }}</strong>
-                    <em>{{ action.dueDate }}</em>
-                    <small>Depends on {{ action.dependency }}</small>
-                  </aside>
-                </article>
-              }
-            </section>
-          </section>
-        }
-      }
-    </section>
-  </div>
-
-  @if (analysisConfirmOpen()) {
-    <section class="confirm-backdrop" aria-labelledby="analysis-confirm-title" role="dialog" aria-modal="true">
-      <article class="confirm-sheet">
-        <div class="confirm-brand">
-          <img src="/assets/uncle-kevs-distillery.png" alt="">
-          <span>
-            <em>Distillery run</em>
-            <strong id="analysis-confirm-title">Send this evidence to the still?</strong>
-          </span>
-        </div>
-        <p>
-          Uncle Kev's Distillery will send the extracted evidence payload into The Distillery,
-          then save the completed canonical discovery model to the workspace.
+      <div class="masthead-copy">
+        <p class="eyebrow">Enterprise discovery distillery</p>
+        <h1>Data Source Discovery Dossier</h1>
+        <p class="subhead">
+          Deterministic extraction first. Trusted desktop deep export, recursive lineage, AI synthesis, and QA.
         </p>
-        <dl>
-          <div>
-            <dt>Sources</dt>
-            <dd>{{ sourceStats().files }}</dd>
-          </div>
-          <div>
-            <dt>Evidence</dt>
-            <dd>{{ sourceStats().evidenceChars }}</dd>
-          </div>
-          <div>
-            <dt>Engine</dt>
-            <dd>The Distillery</dd>
-          </div>
-        </dl>
-        <div class="confirm-actions">
-          <button type="button" class="icon-action" (click)="cancelAnalysisRun()">Cancel</button>
-          <button type="button" class="primary-action" (click)="approveAnalysisRun()">Run Analysis</button>
-        </div>
-      </article>
+      </div>
+    </div>
+
+    <div class="status-strip" aria-live="polite">
+      <span class="status-dot"></span>
+      <span>{{ status() }}</span>
+    </div>
+
+    <section class="upload-panel" aria-labelledby="upload-title">
+      <div class="panel-copy">
+        <h2 id="upload-title">Source Intake</h2>
+        <p>{{ uploadInstruction }}</p>
+      </div>
+
+      <label class="dropzone">
+        <input
+          type="file"
+          multiple
+          (change)="onFilesSelected($event)"
+          accept=".accdb,.mdb,.xlsx,.xlsm,.xlsb,.xls,.docx,.doc,.csv,.txt,.tsv,.sql,.ps1,.py,.js,.ts,.r,.sas"
+        />
+        <span class="dropzone-title">Select source files</span>
+        <span class="dropzone-meta">Access, Excel, Word, CSV/text, SQL/script, and supporting files</span>
+      </label>
     </section>
-  }
+
+    <section class="run-panel" *ngIf="fileCount()">
+      <div class="run-copy">
+        <h2>Fresh Run Contract</h2>
+        <p>{{ runPrompt }}</p>
+      </div>
+
+      <div class="file-ledger">
+        <div class="ledger-summary">
+          <span>{{ fileCount() }} file{{ fileCount() === 1 ? '' : 's' }}</span>
+          <span>{{ formatBytes(totalSize()) }}</span>
+        </div>
+
+        <ul>
+          <li *ngFor="let file of selectedFiles(); let i = index">
+            <span>
+              <strong>{{ file.name }}</strong>
+              <small>{{ formatBytes(file.size) }}</small>
+            </span>
+            <button type="button" (click)="removeFile(i)" aria-label="Remove file">Remove</button>
+          </li>
+        </ul>
+      </div>
+
+      <button class="primary-action" type="button" (click)="generateDossier()" [disabled]="isRunning()">
+        {{ isRunning() ? 'Building package...' : 'Generate Dossier Package' }}
+      </button>
+      <p class="run-progress" *ngIf="isRunning()">
+        {{ elapsedSeconds() }}s elapsed. Trusted desktop collectors are exporting Access macro/form/report/VBA evidence and Excel VBA source where local Office automation permits it.
+      </p>
+    </section>
+
+    <section class="result-panel" *ngIf="downloadUrl() || error()">
+      <div class="error" *ngIf="error()">{{ error() }}</div>
+
+      <div class="success" *ngIf="downloadUrl()">
+        <div>
+          <p class="eyebrow">Package complete</p>
+          <h2>{{ downloadName() }}</h2>
+        </div>
+        <a [href]="downloadUrl()" [download]="downloadName()">Download ZIP</a>
+      </div>
+
+      <dl class="summary-grid" *ngIf="packageSummary() as summary">
+        <div
+          class="kpi-cell"
+          tabindex="0"
+          title="The uploaded source file or file set analyzed in this dossier run."
+          data-tooltip="The uploaded source file or file set analyzed in this dossier run."
+        >
+          <dt>Source</dt>
+          <dd>{{ summary.sourceAnalyzed }}</dd>
+        </div>
+        <div
+          class="kpi-cell"
+          tabindex="0"
+          title="The total number of files inside the generated ZIP package, including reports, workbooks, diagrams, CSVs, manifest, and evidence files."
+          data-tooltip="The total number of files inside the generated ZIP package, including reports, workbooks, diagrams, CSVs, manifest, and evidence files."
+        >
+          <dt>Package files</dt>
+          <dd>{{ summary.packageFileCount }}</dd>
+        </div>
+        <div
+          class="kpi-cell"
+          tabindex="0"
+          title="The count of canonical graph nodes discovered, such as files, worksheets, tables, formulas, macros, modules, outputs, controls, blockers, and data elements."
+          data-tooltip="The count of canonical graph nodes discovered, such as files, worksheets, tables, formulas, macros, modules, outputs, controls, blockers, and data elements."
+        >
+          <dt>Objects</dt>
+          <dd>{{ summary.objectCount }}</dd>
+        </div>
+        <div
+          class="kpi-cell"
+          tabindex="0"
+          title="Saved query objects discovered. For Access, this means saved QueryDefs; for SQL/script files, this reflects parsed query-like assets where applicable."
+          data-tooltip="Saved query objects discovered. For Access, this means saved QueryDefs; for SQL/script files, this reflects parsed query-like assets where applicable."
+        >
+          <dt>Queries</dt>
+          <dd>{{ summary.queryCount }}</dd>
+        </div>
+        <div
+          class="kpi-cell"
+          tabindex="0"
+          title="Runnable automation entrypoints, such as public Excel VBA Sub procedures, button-bound macros, or Access macro objects. Helper functions are counted separately."
+          data-tooltip="Runnable automation entrypoints, such as public Excel VBA Sub procedures, button-bound macros, or Access macro objects. Helper functions are counted separately."
+        >
+          <dt>Macro entrypoints</dt>
+          <dd>{{ summary.macroCount }}</dd>
+        </div>
+        <div
+          class="kpi-cell"
+          tabindex="0"
+          title="VBA code modules extracted from macro-enabled Excel or Access sources. This counts modules, not individual procedures."
+          data-tooltip="VBA code modules extracted from macro-enabled Excel or Access sources. This counts modules, not individual procedures."
+        >
+          <dt>VBA modules</dt>
+          <dd>{{ summary.vbaModuleCount }}</dd>
+        </div>
+        <div
+          class="kpi-cell"
+          tabindex="0"
+          title="Individual VBA Sub, Function, or Property procedures parsed from the extracted VBA modules."
+          data-tooltip="Individual VBA Sub, Function, or Property procedures parsed from the extracted VBA modules."
+        >
+          <dt>VBA procedures</dt>
+          <dd>{{ summary.vbaProcedureCount }}</dd>
+        </div>
+        <div
+          class="kpi-cell"
+          tabindex="0"
+          title="VBA Function or helper procedures. These support automation logic but are not usually runnable macro entrypoints by themselves."
+          data-tooltip="VBA Function or helper procedures. These support automation logic but are not usually runnable macro entrypoints by themselves."
+        >
+          <dt>Functions</dt>
+          <dd>{{ summary.vbaFunctionCount }}</dd>
+        </div>
+        <div
+          class="kpi-cell"
+          tabindex="0"
+          title="Workbook or document event procedures, such as Workbook_Open, BeforeSave, NewSheet, or SheetActivate, that can run automatically when users interact with the file."
+          data-tooltip="Workbook or document event procedures, such as Workbook_Open, BeforeSave, NewSheet, or SheetActivate, that can run automatically when users interact with the file."
+        >
+          <dt>Event handlers</dt>
+          <dd>{{ summary.vbaEventHandlerCount }}</dd>
+        </div>
+        <div
+          class="kpi-cell"
+          tabindex="0"
+          title="External files, databases, folders, or systems referenced by the analyzed source, such as Access linked tables or Excel external connections."
+          data-tooltip="External files, databases, folders, or systems referenced by the analyzed source, such as Access linked tables or Excel external connections."
+        >
+          <dt>Linked sources</dt>
+          <dd>{{ summary.linkedSourceCount }}</dd>
+        </div>
+        <div
+          class="kpi-cell"
+          tabindex="0"
+          title="Upstream sources that were discovered but could not be reached or inspected recursively. These require file access, mounted paths, or owner-approved stopping points."
+          data-tooltip="Upstream sources that were discovered but could not be reached or inspected recursively. These require file access, mounted paths, or owner-approved stopping points."
+        >
+          <dt>Lineage blockers</dt>
+          <dd>{{ summary.lineageBlockers }}</dd>
+        </div>
+        <div
+          class="kpi-cell"
+          tabindex="0"
+          title="The package QA result after contract checks for required folders, reports, workbooks, diagrams, CSVs, manifest validity, evidence references, and source-specific reconciliation."
+          data-tooltip="The package QA result after contract checks for required folders, reports, workbooks, diagrams, CSVs, manifest validity, evidence references, and source-specific reconciliation."
+        >
+          <dt>QA</dt>
+          <dd>{{ summary.qaStatus }}</dd>
+        </div>
+      </dl>
+
+      <section class="cost-panel" *ngIf="packageSummary() as summary" aria-labelledby="cost-title">
+        <div class="cost-titlebar">
+          <span>
+            <p class="eyebrow">Cost intelligence</p>
+            <h3 id="cost-title">OpenAI usage and cache efficiency</h3>
+          </span>
+          <strong>{{ formatCurrency(summary.aiCost.estimatedTotalCostUsd) }}</strong>
+        </div>
+
+        <div class="cost-kpis">
+          <div>
+            <span>Total tokens</span>
+            <strong>{{ formatNumber(summary.aiCost.totalTokens) }}</strong>
+          </div>
+          <div>
+            <span>Input</span>
+            <strong>{{ formatNumber(summary.aiCost.totalInputTokens) }}</strong>
+          </div>
+          <div>
+            <span>Cached input</span>
+            <strong>{{ formatNumber(summary.aiCost.totalCachedInputTokens) }}</strong>
+          </div>
+          <div>
+            <span>Output</span>
+            <strong>{{ formatNumber(summary.aiCost.totalOutputTokens) }}</strong>
+          </div>
+          <div>
+            <span>Cache savings</span>
+            <strong>{{ formatCurrency(summary.aiCost.estimatedCacheSavingsUsd) }}</strong>
+          </div>
+        </div>
+
+        <div class="cache-readout">
+          <div>
+            <span>Prompt cache hit rate</span>
+            <strong>{{ formatPercent(summary.aiCost.cacheHitRate) }}</strong>
+          </div>
+          <div class="cache-meter" aria-hidden="true">
+            <span [style.width.%]="summary.aiCost.cacheHitRate * 100"></span>
+          </div>
+          <p>{{ summary.aiCost.optimizationNote }}</p>
+        </div>
+
+        <div class="model-cost-table" role="table" aria-label="OpenAI model cost breakdown">
+          <div class="model-cost-head" role="row">
+            <span role="columnheader">Model</span>
+            <span role="columnheader">Calls</span>
+            <span role="columnheader">Input</span>
+            <span role="columnheader">Cached</span>
+            <span role="columnheader">Output</span>
+            <span role="columnheader">Cost</span>
+          </div>
+          <div class="model-cost-row" role="row" *ngFor="let model of summary.aiCost.models">
+            <span role="cell">
+              <strong>{{ model.model }}</strong>
+              <small *ngIf="!model.pricing.pricingAvailable">Pricing not configured</small>
+            </span>
+            <span role="cell">{{ model.requests }}</span>
+            <span role="cell">{{ formatNumber(model.inputTokens) }}</span>
+            <span role="cell">{{ formatNumber(model.cachedInputTokens) }}</span>
+            <span role="cell">{{ formatNumber(model.outputTokens) }}</span>
+            <span role="cell">{{ formatCurrency(model.totalCostUsd) }}</span>
+          </div>
+        </div>
+
+        <p class="pricing-note">{{ summary.aiCost.pricingSource }}</p>
+      </section>
+
+      <div class="posture" *ngIf="packageSummary() as summary">
+        <div class="brief-block">
+          <h3>Top Risks</h3>
+          <ul class="risk-list">
+            <li *ngFor="let risk of summary.topRisks">{{ risk }}</li>
+          </ul>
+        </div>
+        <div class="brief-block">
+          <h3>Recommended Path</h3>
+          <p>{{ summary.recommendedPath }}</p>
+        </div>
+
+        <div class="brief-block ai-readout" *ngIf="summary.aiEnabled">
+          <h3>AI Synthesis</h3>
+          <span>{{ summary.aiModel }}</span>
+          <div class="purpose-readout">
+            <span>30,000-foot view</span>
+            <p>{{ summary.filePurpose }}</p>
+          </div>
+          <p>{{ summary.executiveSummary }}</p>
+          <p>{{ summary.architectureSummary }}</p>
+        </div>
+
+        <div class="brief-block" *ngIf="summary.upstreamSources.length">
+          <div class="block-heading">
+            <span>
+              <h3>Recursive Upstream Coverage</h3>
+              <p>
+                {{ summary.upstreamCoverage.resolvedFiles }} files resolved,
+                {{ summary.upstreamCoverage.resolvedFolders }} folders reached,
+                {{ summary.upstreamCoverage.blocked }} blocked of
+                {{ summary.upstreamCoverage.total }} linked source{{ summary.upstreamCoverage.total === 1 ? '' : 's' }}.
+              </p>
+            </span>
+          </div>
+
+          <div class="upstream-list">
+            <article *ngFor="let source of summary.upstreamSources">
+              <div>
+                <strong>{{ source.name }}</strong>
+                <small>{{ source.kind }} · {{ source.table }}</small>
+              </div>
+              <span class="status-pill" [class.resolved]="source.status !== 'Blocked'">{{ source.status }}</span>
+              <p>{{ source.location }}</p>
+              <em>{{ source.action }}</em>
+            </article>
+          </div>
+        </div>
+
+        <div class="brief-block" *ngIf="summary.limitationBlocks.length">
+          <h3>QA Notes</h3>
+          <div class="note-list">
+            <article *ngFor="let note of summary.limitationBlocks">
+              <span>{{ note.severity }}</span>
+              <strong>{{ note.title }}</strong>
+              <p>{{ note.detail }}</p>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+  </section>
 </main>

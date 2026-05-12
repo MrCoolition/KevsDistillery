@@ -1,10 +1,50 @@
+# Local secrets and environment
 .env
 .env.*
 !.env.example
-.git
-.angular/cache
-dist
-node_modules
-server.log
-server.err.log
-server.pid
+
+# Dependencies and build/cache output
+node_modules/
+dist/
+.angular/
+.npm-cache/
+.npm-global/
+.tools/
+
+# Local development logs
+*.log
+dev.out.log
+dev.err.log
+
+# Temporary upload/review/API artifacts
+.tmp_uploads/
+.tmp_uploads/**
+.tmp_api/
+.tmp_api/**
+.tmp_review/
+.tmp_review/**
+tmp/
+tmp/**
+out-tsc/
+coverage/
+
+# Never deploy uploaded client source data or generated dossier packages
+*.accdb
+*.mdb
+*.xls
+*.xlsx
+*.xlsm
+*.xlsb
+*.doc
+*.docx
+*.csv
+*.tsv
+*.txt
+*.zip
+
+# Local editor/system state
+.vscode/
+.idea/
+.history/
+.DS_Store
+Thumbs.db

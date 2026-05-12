@@ -2,30 +2,13 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "angular",
   "buildCommand": "npm run build",
-  "outputDirectory": "dist/the-distillery/browser",
-  "installCommand": "npm install",
-  "regions": ["iad1"],
+  "outputDirectory": "dist/data-source-discovery-distillery/browser",
   "functions": {
-    "api/**/*.js": {
-      "memory": 1024,
-      "maxDuration": 60
+    "api/dossiers.ts": {
+      "maxDuration": 60,
+      "memory": 1024
     }
   },
-  "headers": [
-    {
-      "source": "/api/(.*)",
-      "headers": [
-        {
-          "key": "Cache-Control",
-          "value": "no-store"
-        },
-        {
-          "key": "X-Content-Type-Options",
-          "value": "nosniff"
-        }
-      ]
-    }
-  ],
   "rewrites": [
     {
       "source": "/api/(.*)",

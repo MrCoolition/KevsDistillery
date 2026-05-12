@@ -1,46 +1,67 @@
-# Uncle Kev's Distillery
+# Data Source Discovery Distillery
 
-Uncle Kev's Distillery is an Angular 21 standalone app for graph-backed enterprise data discovery. It lets teams browse real source files and folders, extract evidence, build one canonical proof graph, and generate executive reports, auto-documentation, diagrams, recursive lineage, business-impact analysis, and remediation backlog outputs for Snowflake migration teams using Fivetran, dbt, SQL, and Snowpark.
+Angular 21.2.12 app for generating evidence-backed, graph-backed Data Source Discovery Dossier packages on Vercel with Neon Postgres persistence and OpenAI Responses API synthesis after deterministic extraction.
 
-## Run
+## Stack
 
-Install dependencies with a package manager, then start the Angular dev server:
+- Angular 21 standalone frontend.
+- Vercel static hosting plus Node serverless API in `api/dossiers.ts`.
+- Neon Postgres schema in `db/schema.sql`.
+- Deterministic extraction libraries before AI: `xlsx`, `jszip`, `mammoth`, `csv-parse`, `node-sql-parser`, `sql-formatter`, `exceljs`, and `pdfkit`.
+- OpenAI SDK `responses.create` is optional and only runs when `OPENAI_API_KEY` is configured.
 
-```powershell
+## Local Setup
+
+```bash
 npm install
 npm start
+npm run build
+npm run typecheck:api
 ```
 
-The app expects Angular 21.2.8 packages. In this Codex workspace, Node is installed but `npm` is not available on PATH, so the local smoke test is dependency-free:
+For this Codex desktop environment, I used the bundled Node runtime and a workspace-local npm cache because the system npm wrapper is not available.
 
-```powershell
-node tools/smoke-test.mjs
+`npm start` runs a combined local development setup: Angular serves the UI on `http://127.0.0.1:4200`, `scripts/dev-api.mjs` serves the Vercel-compatible dossier API on `http://127.0.0.1:3001`, and `proxy.conf.json` forwards `/api/*` from Angular to the local API.
+
+## Environment
+
+Copy `.env.example` and configure:
+
+- `DATABASE_URL`: Neon pooled or direct Postgres connection string.
+- `OPENAI_API_KEY`: Optional. If absent, packages are generated deterministically without AI narrative synthesis.
+- `OPENAI_MODEL`: Defaults to `gpt-5.5`.
+
+## Neon Schema
+
+Apply the named `data_discovery` schema with:
+
+```bash
+npm run db:migrate
 ```
 
-## LLM Setup
+## Vercel
 
-Store the OpenAI key in `.env`:
+`vercel.json` sets the Angular output directory and gives the dossier API a larger function budget.
 
-```powershell
-OPENAI_API_KEY=...
+```bash
+npm run build
 ```
 
-The local server-side example loads `.env` automatically:
+Then deploy from the project folder with Vercel.
 
-```powershell
-node tools/discovery-api.example.mjs
-```
+## Dossier Contract
 
-The browser must call this internal API boundary, not OpenAI directly.
+The workflow enforces the required package structure:
 
-For Vercel and Neon production setup, see [docs/production.md](docs/production.md).
+- README at the root.
+- Folders `01` through `09`.
+- Manifest only in `07_Metadata_Manifest`.
+- Action backlog in `08_Action_Backlog`.
+- Financial model in `09_Financial_Impact_Model`.
+- Nine diagram PDFs, each with title, context, legends, criticality, confidence, and evidence notes.
+- Query/macro inventories are separate; Access internals are marked blocked unless exported/native metadata is provided.
+- No `.dot` files are emitted in the final package.
 
-## Product Surface
+## Important Limitation
 
-- Canonical discovery model with required evidence, confidence, criticality, impact, exposure, and next action fields.
-- Executive command surface for scope, coverage, confidence, risk, and decision readiness.
-- Recursive lineage graph with selected-node traceability.
-- Action Pack generation tracker covering briefs, reports, workbooks, auto-docs, diagrams, impact model, backlog, evidence archive, and metadata manifest.
-- Business-impact model for availability, freshness, quality, auditability, recovery effort, and modernization priority.
-- Remediation backlog with acceptance criteria.
-- Server-side LLM orchestration contract for OpenAI `gpt-5.5` via the Responses API.
+Browser uploads and Vercel serverless cannot safely inspect native Microsoft Access system catalogs through ACE/OLEDB. Access files are registered as databases, but MSysObjects/MSysQueries/macros/VBA/relationships require a trusted desktop collector or exported metadata. The package records that as a lineage blocker and creates P0 action items instead of inventing inventory.
